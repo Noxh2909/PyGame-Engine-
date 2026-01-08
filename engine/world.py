@@ -5,6 +5,7 @@ from pathlib import Path
 from gameobjects.mesh import Mesh, MeshRegistry
 from gameobjects.object import GameObject, Transform
 from gameobjects.collider import AABBCollider
+from gameobjects.material import MaterialRegistry
 
 class World:
     def __init__(self, level_path: str | None = None):
@@ -36,6 +37,10 @@ class World:
         mesh = None
         if "mesh" in data:
             mesh = MeshRegistry.get(data["mesh"])
+            
+        material = None
+        if "material" in data:
+            material = MaterialRegistry.get(data["material"])
 
         # Collider (optional)
         collider = None
@@ -43,12 +48,11 @@ class World:
             collider = AABBCollider(size=data["collider"])
 
         # Color (optional)
-        color = tuple(data.get("color", (1.0, 1.0, 1.0))) # default white
 
         obj = GameObject(
             mesh=mesh,
             transform=transform,
-            color=color,
+            material=material,
             collider=collider
         )
 

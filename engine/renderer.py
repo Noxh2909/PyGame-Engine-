@@ -239,7 +239,7 @@ class Renderer:
         glUniformMatrix4fv(self.obj_u_view, 1, GL_TRUE, view)
         glUniformMatrix4fv(self.obj_u_proj, 1, GL_TRUE, proj)
         glUniformMatrix4fv(self.obj_u_model, 1, GL_TRUE, model)
-        
-        glUniform3f(self.obj_u_color, *obj.color)
+
+        glUniform3f(self.obj_u_color, *obj.material.color)
 
         obj.mesh.draw()

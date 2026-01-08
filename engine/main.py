@@ -58,7 +58,8 @@ physics = PhysicsWorld()
 # --------------------
 
 ground_plane = GameObject(
-    mesh=None,  # no rendering mesh
+    mesh=None,              # no rendering mesh
+    material=None,          # no material
     transform=Transform(position=(0, 0, 0), scale=(1000, 1.0, 1000)),
     collider=AABBCollider(size=(1000, 1.0, 1000))
 )
