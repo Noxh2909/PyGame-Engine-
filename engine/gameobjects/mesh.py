@@ -1,4 +1,5 @@
 import numpy as np
+import ctypes
 from OpenGL.GL import (
     glGenVertexArrays, glGenBuffers, glBindVertexArray,
     glBindBuffer, glBufferData, glEnableVertexAttribArray,
@@ -17,7 +18,7 @@ class Mesh:
         :param vertices: The vertices of the mesh
         :type vertices: np.ndarray
         """
-        self.vertex_count = len(vertices) // 3
+        self.vertex_count = len(vertices) // 6  # 3 pos + 3 normal
 
         self.vao = glGenVertexArrays(1)
         self.vbo = glGenBuffers(1)
@@ -31,9 +32,18 @@ class Mesh:
             GL_STATIC_DRAW
         )
 
+        stride = 6 * 4  # 6 floats * 4 bytes (pos + normal)
+
+        # position (location = 0)
         glEnableVertexAttribArray(0)
         glVertexAttribPointer(
-            0, 3, GL_FLOAT, GL_FALSE, 0, None
+            0, 3, GL_FLOAT, GL_FALSE, stride, ctypes.c_void_p(0)
+        )
+
+        # normal (location = 1)
+        glEnableVertexAttribArray(1)
+        glVertexAttribPointer(
+            1, 3, GL_FLOAT, GL_FALSE, stride, ctypes.c_void_p(3 * 4)
         )
 
         glBindVertexArray(0)
@@ -71,21 +81,7 @@ class MeshRegistry:
 
     @staticmethod
     def _load_mesh(name: str) -> Mesh:
-        """
-        Docstring für _load_mesh
-
-        :param name: The name of the mesh to load
-        :type name: str
-        :return: The loaded mesh object
-        :rtype: Mesh
-        """
-        if name == "cube1":
-            return Mesh(cube_vertices)
-        elif name == "cube2":
-            return Mesh(cube_vertices)
-        elif name == "cube3":
-            return Mesh(cube_vertices)
-        elif name == "cube4":
+        if name == "cube":
             return Mesh(cube_vertices)
         else:
             raise ValueError(f"Unknown mesh asset: {name}")

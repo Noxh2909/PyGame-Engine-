@@ -5,10 +5,12 @@ from OpenGL.GL import (
     glGenVertexArrays, glGenBuffers, glBindVertexArray, glBindBuffer,
     glBufferData, glEnableVertexAttribArray, glVertexAttribPointer,
     glUseProgram, glUniformMatrix4fv, glDrawArrays, glEnable,
-    glGetUniformLocation, glUniform3f,
+    glGetUniformLocation, glUniform3f,glUniform1f,
+    glActiveTexture, glBindTexture, glUniform1i,
     GL_VERTEX_SHADER, GL_FRAGMENT_SHADER, GL_COMPILE_STATUS,
     GL_LINK_STATUS, GL_ARRAY_BUFFER, GL_STATIC_DRAW,
-    GL_FLOAT, GL_FALSE, GL_TRUE, GL_TRIANGLES, GL_DEPTH_TEST
+    GL_FLOAT, GL_FALSE, GL_TRUE, GL_TRIANGLES, GL_DEPTH_TEST,
+    GL_TEXTURE_2D, GL_TEXTURE0
 )
 import numpy as np
 
@@ -64,6 +66,10 @@ void main()
 OBJECT_VERTEX_SHADER_SRC = """
 #version 330 core
 layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec3 aNormal;
+
+out vec3 vWorldPos;
+out vec3 vNormal;
 
 uniform mat4 u_model;
 uniform mat4 u_view;
@@ -71,18 +77,52 @@ uniform mat4 u_proj;
 
 void main()
 {
-    gl_Position = u_proj * u_view * u_model * vec4(aPos, 1.0);
+    vec4 world = u_model * vec4(aPos, 1.0);
+    vWorldPos = world.xyz;
+
+    // transform normal to world space
+    mat3 normalMatrix = mat3(transpose(inverse(u_model)));
+    vNormal = normalize(normalMatrix * aNormal);
+
+    gl_Position = u_proj * u_view * world;
 }
 """
 
 OBJECT_FRAGMENT_SHADER_SRC = """
 #version 330 core
+in vec3 vWorldPos;
+in vec3 vNormal;
+
 out vec4 FragColor;
+
 uniform vec3 u_color;
+uniform sampler2D u_texture;
+uniform bool u_use_texture;
+uniform float u_triplanar_scale;
 
 void main()
 {
-    FragColor = vec4(u_color, 1.0);
+    if (!u_use_texture)
+    {
+        FragColor = vec4(u_color, 1.0);
+        return;
+    }
+
+    vec3 n = normalize(vNormal);
+    vec3 blend = abs(n);
+    blend /= (blend.x + blend.y + blend.z);
+
+    vec3 signN = sign(vNormal);
+
+    vec2 uvX = vec2(vWorldPos.z * signN.x, vWorldPos.y) * u_triplanar_scale;
+    vec2 uvY = vec2(vWorldPos.x, vWorldPos.z * signN.y) * u_triplanar_scale;
+    vec2 uvZ = vec2(vWorldPos.x * signN.z, vWorldPos.y) * u_triplanar_scale;
+
+    vec4 tx = texture(u_texture, uvX);
+    vec4 ty = texture(u_texture, uvY);
+    vec4 tz = texture(u_texture, uvZ);
+
+    FragColor = tx * blend.x + ty * blend.y + tz * blend.z;
 }
 """
 
@@ -166,6 +206,13 @@ class Renderer:
         self.obj_u_model = glGetUniformLocation(self.object_program, "u_model")
         self.obj_u_color = glGetUniformLocation(self.object_program, "u_color")
 
+        self.obj_u_texture     = glGetUniformLocation(self.object_program, "u_texture")
+        self.obj_u_use_texture = glGetUniformLocation(self.object_program, "u_use_texture")
+
+        self.obj_u_triplanar_scale = glGetUniformLocation(
+            self.object_program, "u_triplanar_scale"
+        )
+
         self.model = np.identity(4, dtype=np.float32)
 
     def _create_plane(self, size):
@@ -240,6 +287,19 @@ class Renderer:
         glUniformMatrix4fv(self.obj_u_proj, 1, GL_TRUE, proj)
         glUniformMatrix4fv(self.obj_u_model, 1, GL_TRUE, model)
 
+        # material color fallback
         glUniform3f(self.obj_u_color, *obj.material.color)
+
+        # texture binding (if present)
+        if obj.material and obj.material.texture:
+            glActiveTexture(GL_TEXTURE0)
+            glBindTexture(GL_TEXTURE_2D, obj.material.texture)
+            glUniform1i(self.obj_u_texture, 0)
+            glUniform1i(self.obj_u_use_texture, 1)
+        else:
+            glUniform1i(self.obj_u_use_texture, 0)
+
+        # triplanar scale for texture mapping on objects
+        glUniform1f(self.obj_u_triplanar_scale, 0.2)
 
         obj.mesh.draw()
