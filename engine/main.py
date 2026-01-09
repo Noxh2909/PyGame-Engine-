@@ -30,7 +30,7 @@ pygame.display.gl_set_attribute(
     pygame.GL_CONTEXT_PROFILE_CORE
 )
 
-width, height = 1280, 720
+width, height = 1400, 800
 pygame.display.set_mode((width, height), pygame.OPENGL | pygame.DOUBLEBUF)
 glViewport(0, 0, width, height)
 
