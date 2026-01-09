@@ -12,8 +12,9 @@ from input import InputState
 from debug import DebugHUD
 from physics import PhysicsWorld
 from world import World
-from gameobjects.object import GameObject, Transform
-from gameobjects.collider import AABBCollider
+from gameobjects.object import GameObject
+from gameobjects.transform import Transform
+from gameobjects.collider.aabb import AABBCollider
 
 # --------------------
 # Pygame / OpenGL setup

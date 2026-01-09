@@ -3,8 +3,9 @@ import json
 from pathlib import Path
 
 from gameobjects.mesh import Mesh, MeshRegistry
-from gameobjects.object import GameObject, Transform
-from gameobjects.collider import AABBCollider
+from gameobjects.object import GameObject
+from gameobjects.transform import Transform
+from gameobjects.collider.aabb import AABBCollider
 from gameobjects.material import MaterialRegistry
 
 class World:
