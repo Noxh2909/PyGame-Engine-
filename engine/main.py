@@ -10,7 +10,7 @@ from camera import FPSCamera
 from rendering.renderer import Renderer
 from input import InputState
 from debug import DebugHUD
-from physics import PhysicsWorld
+from physics.world_physics import PhysicsWorld
 from world import World
 from gameobjects.object import GameObject
 from gameobjects.transform import Transform
