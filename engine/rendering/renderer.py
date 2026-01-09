@@ -22,261 +22,13 @@ from OpenGL.GL import (
 import numpy as np
 import ctypes
 
-
-# =========================
-# Shader Quellen
-# =========================
-
-GRID_VERTEX_SHADER_SRC = """
-#version 330 core
-layout (location = 0) in vec3 aPos;
-
-uniform mat4 u_view;
-uniform mat4 u_proj;
-uniform mat4 u_model;
-
-out vec3 v_world_pos;
-
-void main()
-{
-    vec4 world = u_model * vec4(aPos, 1.0);
-    v_world_pos = world.xyz;
-    gl_Position = u_proj * u_view * world;
-}
-"""
-
-GRID_FRAGMENT_SHADER_SRC = """
-#version 330 core
-in vec3 v_world_pos;
-out vec4 FragColor;
-
-uniform vec3 u_color;
-
-void main()
-{
-    // simple grid-style coloring
-    float scale = 1.0;
-    float line = step(0.999, abs(sin(v_world_pos.x * scale))) +
-                 step(0.999, abs(sin(v_world_pos.z * scale)));
-
-    vec3 base = vec3(0.15, 0.15, 0.17);
-
-    // white grid lines
-    vec3 grid_color = vec3(1.0, 1.0, 1.0);
-
-    float alpha = clamp(line, 0.0, 1.0) * 0.25; // <<< grid transparency
-
-    vec3 color = mix(base, grid_color, clamp(line, 0.0, 1.0));
-    FragColor = vec4(color, alpha);
-}
-"""
-
-OBJECT_VERTEX_SHADER_SRC = """
-#version 330 core
-layout (location = 0) in vec3 aPos;
-layout (location = 1) in vec3 aNormal;
-
-out vec3 vWorldPos;
-out vec3 vNormal;
-
-uniform mat4 u_model;
-uniform mat4 u_view;
-uniform mat4 u_proj;
-
-void main()
-{
-    vec4 world = u_model * vec4(aPos, 1.0);
-    vWorldPos = world.xyz;
-
-    // transform normal to world space
-    mat3 normalMatrix = mat3(transpose(inverse(u_model)));
-    vNormal = normalize(normalMatrix * aNormal);
-
-    gl_Position = u_proj * u_view * world;
-}
-"""
-
-OBJECT_FRAGMENT_SHADER_SRC = """
-#version 330 core
-in vec3 vWorldPos;
-in vec3 vNormal;
-
-out vec4 FragColor;
-
-uniform vec3 u_color;
-uniform sampler2D u_texture;
-uniform bool u_use_texture;
-uniform float u_triplanar_scale;
-
-// lighting
-uniform vec3 u_light_pos;        // point light (lamp)
-uniform vec3 u_light_color;
-uniform float u_light_intensity;
-uniform float u_ambient_strength;
-
-// SSAO
-uniform sampler2D u_ssao;
-uniform vec2 u_screen_size;
-uniform bool u_emissive;
-
-void main()
-{
-    vec3 baseColor;
-
-    // ---------- texture / color ----------
-    if (u_use_texture)
-    {
-        vec3 n = normalize(vNormal);
-        vec3 blend = abs(n);
-        blend /= (blend.x + blend.y + blend.z);
-
-        vec3 signN = sign(n);
-
-        vec2 uvX = vec2(vWorldPos.z * signN.x, vWorldPos.y) * u_triplanar_scale;
-        vec2 uvY = vec2(vWorldPos.x, vWorldPos.z * signN.y) * u_triplanar_scale;
-        vec2 uvZ = vec2(vWorldPos.x * signN.z, vWorldPos.y) * u_triplanar_scale;
-
-        vec4 tx = texture(u_texture, uvX);
-        vec4 ty = texture(u_texture, uvY);
-        vec4 tz = texture(u_texture, uvZ);
-
-        baseColor = (tx * blend.x + ty * blend.y + tz * blend.z).rgb;
-    }
-    else
-    {
-        baseColor = u_color;
-    }
-
-    // ---------- emissive (light source itself) ----------
-    if (u_emissive)
-    {
-        FragColor = vec4(baseColor, 1.0);
-        return;
-    }
-
-    // ---------- lighting ----------
-    vec3 n = normalize(vNormal);
-
-    // ambient
-    vec3 ambient = u_ambient_strength * baseColor;
-
-    // point light (lamp)
-    vec3 lightDir = u_light_pos - vWorldPos;
-    float distance = length(lightDir);
-    lightDir = normalize(lightDir);
-
-    float diff = max(dot(n, lightDir), 0.0);
-
-    // inverse-square attenuation (stable)
-    float attenuation = u_light_intensity / (distance * distance + 1.0);
-
-    vec3 diffuse = diff * baseColor * u_light_color * attenuation;
-
-    // SSAO sampling
-    vec2 uv = gl_FragCoord.xy / u_screen_size;
-    float ao = clamp(texture(u_ssao, uv).r, 0.25, 1.0);
-
-    vec3 finalColor = (ambient + diffuse) * ao;
-    FragColor = vec4(finalColor, 1.0);
-}
-"""
-
-NORMAL_FRAGMENT_SHADER_SRC = """
-#version 330 core
-in vec3 vNormal;
-out vec4 FragColor;
-
-void main()
-{
-    vec3 n = normalize(vNormal) * 0.5 + 0.5;
-    FragColor = vec4(n, 1.0);
-}
-"""
-
-SSAO_VERTEX_SHADER_SRC = """
-#version 330 core
-layout (location = 0) in vec2 aPos;
-layout (location = 1) in vec2 aUV;
-out vec2 vUV;
-
-void main()
-{
-    vUV = aUV;
-    gl_Position = vec4(aPos, 0.0, 1.0);
-}
-"""
-
-SSAO_FRAGMENT_SHADER_SRC = """
-#version 330 core
-out float FragColor;
-in vec2 vUV;
-
-uniform sampler2D u_normal;
-uniform sampler2D u_depth;
-uniform sampler2D u_noise;
-
-uniform vec3 u_samples[64];
-uniform mat4 u_proj;
-
-uniform vec2 u_noise_scale;
-uniform float u_radius;
-uniform float u_bias;
-
-void main()
-{
-    vec3 normal = normalize(texture(u_normal, vUV).xyz * 2.0 - 1.0);
-    float depth = texture(u_depth, vUV).r;
-
-    vec3 randomVec = texture(u_noise, vUV * u_noise_scale).xyz;
-    vec3 tangent = normalize(randomVec - normal * dot(randomVec, normal));
-    vec3 bitangent = cross(normal, tangent);
-    mat3 TBN = mat3(tangent, bitangent, normal);
-
-    float occlusion = 0.0;
-
-    for (int i = 0; i < 64; i++)
-    {
-        vec3 samplePos = TBN * u_samples[i];
-        samplePos = samplePos * u_radius + vec3(0.0, 0.0, depth);
-
-        vec4 offset = vec4(samplePos, 1.0);
-        offset = u_proj * offset;
-        offset.xyz /= offset.w;
-        offset.xyz = offset.xyz * 0.5 + 0.5;
-
-        float sampleDepth = texture(u_depth, offset.xy).r;
-        float rangeCheck = smoothstep(0.0, 1.0, u_radius / abs(depth - sampleDepth));
-        occlusion += (sampleDepth >= samplePos.z + u_bias ? 1.0 : 0.0) * rangeCheck;
-    }
-
-    occlusion = 1.0 - (occlusion / 64.0);
-    FragColor = occlusion;
-}
-"""
-
-SSAO_BLUR_FRAGMENT_SHADER_SRC = """
-#version 330 core
-out float FragColor;
-in vec2 vUV;
-uniform sampler2D u_ssao;
-
-void main()
-{
-    float result = 0.0;
-    vec2 texel = 1.0 / textureSize(u_ssao, 0);
-
-    for (int x = -2; x <= 2; x++)
-    for (int y = -2; y <= 2; y++)
-        result += texture(u_ssao, vUV + vec2(x, y) * texel).r;
-
-    FragColor = result / 25.0;
-}
-"""
-
-
 # =========================
 # Shader Utils
 # =========================
+
+def load_shader(path: str) -> str:
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
 
 def compile_shader(src, shader_type):
     """
@@ -295,7 +47,6 @@ def compile_shader(src, shader_type):
         raise RuntimeError(error)
 
     return shader
-
 
 def create_program(vs_src, fs_src):
     """
@@ -321,6 +72,18 @@ def create_program(vs_src, fs_src):
     glDeleteShader(fs)
     return program
 
+# =========================
+# Shader Quellen
+# =========================
+
+GRID_VERTEX_SHADER_SRC = load_shader("engine/rendering/shader/grid.vert")
+GRID_FRAGMENT_SHADER_SRC = load_shader("engine/rendering/shader/grid.frag")
+OBJECT_VERTEX_SHADER_SRC = load_shader("engine/rendering/shader/object.vert")
+OBJECT_FRAGMENT_SHADER_SRC = load_shader("engine/rendering/shader/object.frag")
+NORMAL_FRAGMENT_SHADER_SRC = load_shader("engine/rendering/shader/normal.frag")
+SSAO_VERTEX_SHADER_SRC = load_shader("engine/rendering/shader/ssao.vert")
+SSAO_FRAGMENT_SHADER_SRC = load_shader("engine/rendering/shader/ssao.frag")
+SSAO_BLUR_FRAGMENT_SHADER_SRC = load_shader("engine/rendering/shader/ssao_blur.frag")
 
 # =========================
 # Renderer

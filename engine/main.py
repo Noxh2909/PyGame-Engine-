@@ -7,7 +7,7 @@ from OpenGL.GL import (
 )
 
 from camera import FPSCamera
-from renderer import Renderer
+from rendering.renderer import Renderer
 from input import InputState
 from debug import DebugHUD
 from physics import PhysicsWorld
