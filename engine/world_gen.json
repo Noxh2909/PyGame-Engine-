@@ -2,10 +2,49 @@
   "objects": [
     {
       "mesh": "cube",
-      "material": "brick_wall",
-      "position": [3, 1, 3], 
-      "scale": [0.5, 10, 10],
-      "collider": [1, 10, 10]
+      "material": "wood",
+      "position": [4, 1, 3], 
+      "scale": [0.5, 18, 10],
+      "collider": [0.5, 18, 10]
+    },
+    {
+      "mesh": "cube",
+      "material": "wood",
+      "position": [-6, 1, 3], 
+      "scale": [0.5, 18, 10],
+      "collider": [0.5, 18, 10]
+    },
+    {
+      "mesh": "cube",
+      "material": "wood",
+      "position": [-1, 1, 8], 
+      "scale": [10, 18, 0.5],
+      "collider": [10, 18, 0.5]
+    },
+    {
+      "mesh": "cube",
+      "material": "marble",
+      "position": [-1, 10, 3], 
+      "scale": [10, 0.5, 10],
+      "collider": [10, 0.5, 10]
+    },
+    {
+      "mesh": "cube",
+      "material": "marble",
+      "position": [-1, 0, 3], 
+      "scale": [10, 1.0, 10],
+      "collider": [10, 1.0, 10]
+    },
+    {
+      "mesh": "sphere",
+      "material": "sun",
+      "position": [-1, 8, 3],
+      "scale": [1, 1, 1],
+      "collider": [1.5, 1.5, 1.5],
+      "light": {
+        "color": [1.0, 0.75, 0.55],
+        "intensity": 60.0
+      }
     }
   ]
 }

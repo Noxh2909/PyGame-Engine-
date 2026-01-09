@@ -7,7 +7,7 @@ from OpenGL.GL import (
     GL_ARRAY_BUFFER, GL_STATIC_DRAW,
     GL_FLOAT, GL_FALSE, GL_TRIANGLES
 )
-from gameobjects.assets.vertec import cube_vertices
+from gameobjects.assets.vertec import cube_vertices, sphere_vertices
 
 class Mesh:
     def __init__(self, vertices: np.ndarray):
@@ -83,5 +83,7 @@ class MeshRegistry:
     def _load_mesh(name: str) -> Mesh:
         if name == "cube":
             return Mesh(cube_vertices)
+        elif name == "sphere":
+            return Mesh(sphere_vertices)
         else:
             raise ValueError(f"Unknown mesh asset: {name}")

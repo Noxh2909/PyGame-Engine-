@@ -3,13 +3,14 @@ from texture import load_texture
 
 
 class Material:
-    def __init__(self, color=(1.0, 1.0, 1.0), texture=None):
+    def __init__(self, color=(1.0, 1.0, 1.0), texture=None, emissive=False):
         """
         color   : fallback color (vec3)
         texture : OpenGL texture id or None
         """
         self.color = color
         self.texture = texture
+        self.emissive = emissive
 
 
 class MaterialRegistry:
@@ -25,6 +26,8 @@ class MaterialRegistry:
     def _load(name: str) -> Material:
         base_dir = os.path.dirname(os.path.dirname(__file__))
         texture_dir = os.path.join(base_dir, "gameobjects", "assets", "textures")
+        if name == "white":
+            return Material(color=(1.0, 1.0, 1.0))
 
         if name == "white_bricks":
             return Material(
@@ -38,7 +41,25 @@ class MaterialRegistry:
                     os.path.join(texture_dir, "brick_wall.jpg")
                 )
             )
-        if name == "white":
-            return Material(color=(1.0, 1.0, 1.0))
+        if name == "metal":
+            return Material(
+                texture=load_texture(
+                    os.path.join(texture_dir, "metal.png")
+                )
+            )
+        if name == "marble":
+            return Material(
+                texture=load_texture(
+                    os.path.join(texture_dir, "marble_floor.jpg")
+                )
+            )
+        if name == "wood":
+            return Material(
+                texture=load_texture(
+                    os.path.join(texture_dir, "wood_wall.jpg")
+                )
+            )
+        if name == "sun":
+            return Material(color=(1.0, 1.0, 1.0), emissive=True)
 
         raise ValueError(f"Unknown material: {name}")

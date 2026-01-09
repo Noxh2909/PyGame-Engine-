@@ -52,6 +52,7 @@ input_state = InputState()
 renderer = Renderer()
 debug = DebugHUD((width, height))
 physics = PhysicsWorld()
+world = World("engine/world_gen.json")
 
 # --------------------
 # Hardcoded world objects
@@ -66,13 +67,21 @@ ground_plane = GameObject(
 
 physics.add_static(ground_plane)
 
+sun = world.sun
+if sun is not None and sun.light is not None:
+    renderer.set_light(
+        position=sun.transform.position,
+        color=sun.light.get("color"),
+        intensity=sun.light.get("intensity")
+    )
+
 # --------------------  
 # Visual cube ONLY
 # --------------------
 
-world = World("engine/world_gen.json")
-for obj in world.static_objects:
-    physics.add_static(obj)
+for obj in world.objects:
+    if obj.collider is not None:
+        physics.add_static(obj)
 
 clock = pygame.time.Clock()
 running = True
@@ -95,6 +104,11 @@ while running:
     camera.process_keyboard(actions, dt)
     physics.step(dt, camera)
 
+    # ---------- SSAO Phase A: Normal + Depth pass ----------
+    renderer.render_normals(world.objects, camera, width / height)
+    renderer.render_ssao(camera, width, height)
+
+    # ---------- Normal render pass ----------
     glClearColor(0.05, 0.05, 0.08, 1.0)
     glClear(int(GL_COLOR_BUFFER_BIT) | int(GL_DEPTH_BUFFER_BIT))
 

@@ -30,7 +30,7 @@ class Transform:
         return m
     
 class GameObject:
-    def __init__(self, mesh, transform, material=None, collider=None):
+    def __init__(self, mesh, transform, material=None, collider=None, light=None):
         """
         Docstring für __init__
 
@@ -44,3 +44,4 @@ class GameObject:
         self.transform = transform
         self.material = material
         self.collider = collider
+        self.light = light

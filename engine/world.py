@@ -16,6 +16,8 @@ class World:
         """
         self.objects: list[GameObject] = []
         self.static_objects: list[GameObject] = []
+        self.lights: list[GameObject] = []
+        self.sun: GameObject | None = None
         if level_path:
             self.load_level(level_path)
             
@@ -27,36 +29,47 @@ class World:
         :param data: dict with object parameters
         :type data: dict
         """
-        # Transform
+         # ---------- transform ----------
         position = data.get("position", [0, 0, 0])
         scale = data.get("scale", [1, 1, 1])
-
         transform = Transform(position=position, scale=scale)
 
-        # Mesh (optional)
+        # ---------- mesh ----------
         mesh = None
-        if "mesh" in data:
-            mesh = MeshRegistry.get(data["mesh"])
-            
+        mesh_name = data.get("mesh")
+        if mesh_name:
+            mesh = MeshRegistry.get(mesh_name)
+
+        # ---------- material ----------
         material = None
-        if "material" in data:
-            material = MaterialRegistry.get(data["material"])
+        material_name = data.get("material")
+        if material_name:
+            material = MaterialRegistry.get(material_name)
 
-        # Collider (optional)
+        # ---------- collider ----------
         collider = None
-        if "collider" in data:
-            collider = AABBCollider(size=data["collider"])
+        collider_size = data.get("collider")
+        if collider_size:
+            collider = AABBCollider(size=collider_size)
 
-        # Color (optional)
+        # ---------- light ----------
+        light = data.get("light")
 
         obj = GameObject(
             mesh=mesh,
             transform=transform,
             material=material,
-            collider=collider
+            collider=collider,
+            light=light
         )
 
         self.objects.append(obj)
+
+        # Light-emitting objects (can be multiple)
+        if light is not None:
+            self.lights.append(obj)
+            if self.sun is None:
+                self.sun = obj
 
         if collider is not None:
             self.static_objects.append(obj)
