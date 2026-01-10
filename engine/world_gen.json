@@ -33,18 +33,18 @@
     {
       "mesh": "cube",
       "material": {
-        "name": "ocean",
-        "texture_scale_mode": "triplanar"
+        "name": "yasu",
+        "texture_scale_mode": "default"
       },
-      "position": [-1, 5, 7.7],
-      "scale": [3, 3, 0.05],
+      "position": [-1, 5.0, 7.7],
+      "scale": [2.5, 3, 0.05],
       "collider": [3, 3, 0.05]
     },
     {
       "mesh": "cube",
       "material": {
         "name": "marble",
-        "texture_scale_mode": "triplanar"
+        "texture_scale_mode": "default"
       },
       "position": [-1, 10, 3],
       "scale": [10, 0.5, 10],
@@ -54,7 +54,7 @@
       "mesh": "cube",
       "material": {
         "name": "marble",
-        "texture_scale_mode": "triplanar"
+        "texture_scale_mode": "default"
       },
       "position": [-1, 0, 3],
       "scale": [10, 0.5, 10],
