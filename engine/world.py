@@ -6,7 +6,7 @@ from gameobjects.mesh import Mesh, MeshRegistry
 from gameobjects.object import GameObject
 from gameobjects.transform import Transform
 from gameobjects.collider.aabb import AABBCollider
-from gameobjects.material import MaterialRegistry
+from gameobjects.material import Material, MaterialRegistry
 
 class World:
     def __init__(self, level_path: str | None = None):
@@ -43,9 +43,23 @@ class World:
 
         # ---------- material ----------
         material = None
-        material_name = data.get("material")
-        if material_name:
-            material = MaterialRegistry.get(material_name)
+        material_data = data.get("material")
+
+        if isinstance(material_data, str):
+            material = MaterialRegistry.get(material_data)
+
+        elif isinstance(material_data, dict):
+            base_name = material_data.get("name")
+            if base_name:
+                base_material = MaterialRegistry.get(base_name)
+
+                material = Material(
+                    color=base_material.color,
+                    texture=base_material.texture,
+                    emissive=base_material.emissive,
+                    texture_scale_mode=material_data.get("texture_scale_mode", "default"),
+                    texture_scale_value=material_data.get("texture_scale_value")
+                )
 
         # ---------- collider ----------
         collider = None

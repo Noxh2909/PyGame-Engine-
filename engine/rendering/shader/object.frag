@@ -2,12 +2,15 @@
 
 in vec3 vWorldPos;
 in vec3 vNormal;
+in vec2 vUV;
 
 out vec4 FragColor;
 
 uniform vec3 u_color;
 uniform sampler2D u_texture;
 uniform bool u_use_texture;
+uniform int u_texture_mode;
+// 0 = default (UV), 1 = triplanar
 uniform float u_triplanar_scale;
 
 // lighting
@@ -28,21 +31,29 @@ void main()
     // ---------- texture / color ----------
     if (u_use_texture)
     {
-        vec3 n = normalize(vNormal);
-        vec3 blend = abs(n);
-        blend /= (blend.x + blend.y + blend.z);
+        // -------- default: UV mapping (object-local) --------
+        if (u_texture_mode == 0)
+        {
+            baseColor = texture(u_texture, vUV).rgb;
+        }
+        // -------- triplanar: world-space --------
+        else
+        {
+            vec3 n = normalize(vNormal);
+            vec3 blend = abs(n);
+            blend = max(blend, vec3(0.0001));
+            blend /= (blend.x + blend.y + blend.z);
 
-        vec3 signN = sign(n);
+            vec2 uvX = vWorldPos.zy * u_triplanar_scale;
+            vec2 uvY = vWorldPos.xz * u_triplanar_scale;
+            vec2 uvZ = vWorldPos.xy * u_triplanar_scale;
 
-        vec2 uvX = vec2(vWorldPos.z * signN.x, vWorldPos.y) * u_triplanar_scale;
-        vec2 uvY = vec2(vWorldPos.x, vWorldPos.z * signN.y) * u_triplanar_scale;
-        vec2 uvZ = vec2(vWorldPos.x * signN.z, vWorldPos.y) * u_triplanar_scale;
+            vec3 tx = texture(u_texture, uvX).rgb;
+            vec3 ty = texture(u_texture, uvY).rgb;
+            vec3 tz = texture(u_texture, uvZ).rgb;
 
-        vec4 tx = texture(u_texture, uvX);
-        vec4 ty = texture(u_texture, uvY);
-        vec4 tz = texture(u_texture, uvZ);
-
-        baseColor = (tx * blend.x + ty * blend.y + tz * blend.z).rgb;
+            baseColor = tx * blend.x + ty * blend.y + tz * blend.z;
+        }
     }
     else
     {

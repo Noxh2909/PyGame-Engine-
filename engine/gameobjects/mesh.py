@@ -18,7 +18,7 @@ class Mesh:
         :param vertices: The vertices of the mesh
         :type vertices: np.ndarray
         """
-        self.vertex_count = len(vertices) // 6  # 3 pos + 3 normal
+        self.vertex_count = len(vertices) // 8  # 3 pos + 3 normal + 2 uv
 
         self.vao = glGenVertexArrays(1)
         self.vbo = glGenBuffers(1)
@@ -31,8 +31,12 @@ class Mesh:
             vertices,
             GL_STATIC_DRAW
         )
+        # Vertex layout:
+        # | x y z nx ny nz u v | x y z nx ny nz u v | x y z nx ny nz u v |
+        # |<------ 32 B ------>|<------ 32 B ----->|<------ 32 B ------->|   
+        # 8 floats per vertex, 4 bytes each = 32 bytes
 
-        stride = 6 * 4  # 6 floats * 4 bytes (pos + normal)
+        stride = 8 * 4  # 8 floats * 4 bytes (pos + normal + uv)
 
         # position (location = 0)
         glEnableVertexAttribArray(0)
@@ -44,6 +48,12 @@ class Mesh:
         glEnableVertexAttribArray(1)
         glVertexAttribPointer(
             1, 3, GL_FLOAT, GL_FALSE, stride, ctypes.c_void_p(3 * 4)
+        )
+
+        # uv (location = 2)
+        glEnableVertexAttribArray(2)
+        glVertexAttribPointer(
+            2, 2, GL_FLOAT, GL_FALSE, stride, ctypes.c_void_p(6 * 4)
         )
 
         glBindVertexArray(0)

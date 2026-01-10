@@ -128,9 +128,15 @@ class Renderer:
         self.obj_u_texture     = glGetUniformLocation(self.object_program, "u_texture")
         self.obj_u_use_texture = glGetUniformLocation(self.object_program, "u_use_texture")
 
+
+        self.obj_u_texture_mode = glGetUniformLocation(
+            self.object_program, "u_texture_mode"
+        )
+        
         self.obj_u_triplanar_scale = glGetUniformLocation(
             self.object_program, "u_triplanar_scale"
         )
+        
         self.obj_u_emissive = glGetUniformLocation(
             self.object_program, "u_emissive"
         )
@@ -357,8 +363,36 @@ class Renderer:
         glUniform1i(self.obj_u_ssao, 1)
         glUniform2f(self.obj_u_screen_size, 1280.0, 720.0)
 
-        # triplanar scale for texture mapping on objects
-        glUniform1f(self.obj_u_triplanar_scale, 0.1)
+        mat = obj.material
+        mode = getattr(mat, "texture_scale_mode", None) or "default"
+
+        # -------- default: UV mapping (object-local) --------
+        if mode == "default":
+            # Shader: u_texture_mode == 0 → UV-Mapping
+            glUniform1i(self.obj_u_texture_mode, 0)
+
+            # triplanar scale wird hier NICHT benutzt
+            glUniform1f(self.obj_u_triplanar_scale, 1.0)
+
+        # -------- triplanar: world-space --------
+        elif mode == "triplanar":
+            glUniform1i(self.obj_u_texture_mode, 1)
+
+            # klassisches world-aligned triplanar
+            glUniform1f(self.obj_u_triplanar_scale, 0.1)
+
+        # -------- manual triplanar --------
+        elif mode == "manual":
+            assert mat.texture_scale_value is not None, \
+                "texture_scale_value required when texture_scale_mode == 'manual'"
+
+            glUniform1i(self.obj_u_texture_mode, 1)
+            glUniform1f(self.obj_u_triplanar_scale, mat.texture_scale_value)
+
+        # -------- safety fallback --------
+        else:
+            glUniform1i(self.obj_u_texture_mode, 0)
+            glUniform1f(self.obj_u_triplanar_scale, 1.0)
 
         # lighting (dynamic light from world)
         glUniform3f(self.obj_u_light_pos, *self.light_pos)
