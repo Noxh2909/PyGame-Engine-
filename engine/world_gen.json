@@ -32,8 +32,8 @@
       "mesh": "cube",
       "material": "marble",
       "position": [-1, 0, 3], 
-      "scale": [10, 1.0, 10],
-      "collider": [10, 1.0, 10]
+      "scale": [10, 0.5, 10],
+      "collider": [10, 0.5, 10]
     },
     {
       "mesh": "sphere",
