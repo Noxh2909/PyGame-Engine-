@@ -1,7 +1,1 @@
-/__pycache__
-/gameobjects/__pycache__
-/rendering/__pycache__
-/engine/physics/__pycache__
-/gameobjects/assets/__pycache__
-/gameobjects/collider/__pycache__
-/gameobjects/player/__pycache__
+__pycache__/

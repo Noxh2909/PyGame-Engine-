@@ -8,6 +8,9 @@ from OpenGL.GL import (
 
 from gameobjects.player.player import Player
 from gameobjects.player.camera import Camera
+from gameobjects.player.mannequin.capsule_mannequin import CapsuleMannequin
+from gameobjects.player.mannequin.capsule_mannequin_mesh import CapsuleBodyMesh, CapsuleHeadMesh
+
 from rendering.renderer import Renderer
 from input import InputState
 from debug import DebugHUD
@@ -50,12 +53,32 @@ glEnable(GL_DEPTH_TEST)
 # --------------------
 
 player = Player()
-camera = Camera(player)
 input_state = InputState()
 renderer = Renderer()
 debug = DebugHUD((width, height))
 physics = PhysicsWorld()
+
+camera = Camera(player, physics)
 world = World("engine/world_gen.json")
+
+# --------------------
+# Capsule mannequin (debug player body)
+# --------------------
+
+from gameobjects.assets.vertec import cylinder_vertices, sphere_vertices
+from gameobjects.mesh import Mesh  # adjust if your Mesh class lives elsewhere
+
+capsule_mesh = Mesh(cylinder_vertices)
+sphere_mesh = Mesh(sphere_vertices)
+
+body_mesh = CapsuleBodyMesh(capsule_mesh)
+head_mesh = CapsuleHeadMesh(sphere_mesh)
+
+mannequin = CapsuleMannequin(
+    player=player,
+    body_mesh=body_mesh,
+    head_mesh=head_mesh,
+)
 
 # --------------------
 # Hardcoded world objects
@@ -88,6 +111,8 @@ for obj in world.objects:
 
 clock = pygame.time.Clock()
 running = True
+first_person = True 
+camera.third_person = False
 
 while running:
     dt = clock.tick(240) / 1000.0
@@ -100,6 +125,10 @@ while running:
     player.process_mouse(mx, my)
 
     actions = input_state.update()
+    
+    if actions["toggle_third_person"]:
+        first_person = not first_person
+        camera.third_person = not first_person
 
     # store previous position for physics (ground / wall detection)
     player.prev_position = player.position.copy()
@@ -119,6 +148,13 @@ while running:
     for obj in world.objects:
         if obj.mesh is not None:
             renderer.draw_object(obj, camera, width / height)
+
+    # --------------------
+    # Draw player mannequin (third-person / debug)
+    # --------------------
+
+    if not first_person and capsule_mesh is not None:
+        mannequin.draw(renderer.object_program)
 
     debug.draw(clock, player)
     pygame.display.flip()

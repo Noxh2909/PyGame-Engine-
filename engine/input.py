@@ -29,11 +29,13 @@ class InputState:
             "crouch_tap": False,    # TAP  -> slide
 
             "jump": False,
+            "toggle_third_person": False
         }
 
         # previous key states for edge detection
         self._prev_jump = False
         self._prev_crouch = False
+        self._prev_toggle_third_person = False
 
     def update(self):
         """
@@ -62,5 +64,9 @@ class InputState:
         jump_now = keys[pygame.K_SPACE]
         self.actions["jump"] = jump_now and not self._prev_jump
         self._prev_jump = jump_now
+        
+        toggle_now = keys[pygame.K_v]
+        self.actions["toggle_third_person"] = toggle_now and not self._prev_toggle_third_person
+        self._prev_toggle_third_person = toggle_now
 
         return self.actions

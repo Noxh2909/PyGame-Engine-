@@ -104,3 +104,55 @@ class PhysicsWorld:
 
         if grounded:
             player._jump_locked = False
+
+    # -------------------------------------------------
+    # Raycast (for camera collision)
+    # -------------------------------------------------
+    def raycast(self, start: np.ndarray, end: np.ndarray):
+        """
+        Raycast / segment test against static AABB colliders.
+
+        Used for CAMERA collision only.
+        Returns the closest hit point (np.ndarray) or None.
+        """
+
+        direction = end - start
+        closest_t = 1.0
+        hit_point = None
+
+        for obj in self.static_objects:
+            if obj.collider is None:
+                continue
+
+            min_v, max_v = obj.collider.get_bounds(obj.transform)
+
+            tmin = 0.0
+            tmax = 1.0
+
+            # Slab method for segment vs AABB
+            for axis in range(3):
+                d = direction[axis]
+                if abs(d) < 1e-6:
+                    # Ray parallel to slab
+                    if start[axis] < min_v[axis] or start[axis] > max_v[axis]:
+                        break
+                else:
+                    inv_d = 1.0 / d
+                    t1 = (min_v[axis] - start[axis]) * inv_d
+                    t2 = (max_v[axis] - start[axis]) * inv_d
+
+                    if t1 > t2:
+                        t1, t2 = t2, t1
+
+                    tmin = max(tmin, t1)
+                    tmax = min(tmax, t2)
+
+                    if tmin > tmax:
+                        break
+            else:
+                # Valid intersection on the segment
+                if tmin < closest_t:
+                    closest_t = tmin
+                    hit_point = start + direction * tmin
+
+        return hit_point
