@@ -8,8 +8,7 @@ from OpenGL.GL import (
 
 from gameobjects.player.player import Player
 from gameobjects.player.camera import Camera
-from gameobjects.player.mannequin.capsule_mannequin import CapsuleMannequin
-from gameobjects.player.mannequin.capsule_mannequin_mesh import CapsuleBodyMesh, CapsuleHeadMesh
+from gameobjects.player.mannequin.capsule_mannequin import CapsuleMannequin, CapsuleBodyMesh, CapsuleHeadMesh
 
 from rendering.renderer import Renderer
 from input import InputState
