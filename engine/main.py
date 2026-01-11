@@ -50,7 +50,7 @@ glViewport(0, 0, width, height)
 
 pygame.mouse.set_visible(False)
 pygame.event.set_grab(True)
-pygame.mouse.get_rel()  
+# pygame.mouse.get_rel()  
 
 version = glGetString(GL_VERSION)
 if version:
@@ -86,7 +86,7 @@ mannequin_height = 1.8  # reale Körperhöhe
 mannequin_material = Material(color=(1.0, 1.0, 1.0))
 
 if albedo_image is not None:
-    temp_dir = "engine/gameobjects/assets/_tmp"
+    temp_dir = "engine/gameobjects/assets/skins"
     os.makedirs(temp_dir, exist_ok=True)
     temp_path = os.path.join(temp_dir, "mannequin_albedo.png")
 
