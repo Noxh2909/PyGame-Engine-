@@ -6,7 +6,8 @@ from OpenGL.GL import (
     glEnable, GL_DEPTH_TEST
 )
 
-from camera import FPSCamera
+from gameobjects.player.player import Player
+from gameobjects.player.camera import Camera
 from rendering.renderer import Renderer
 from input import InputState
 from debug import DebugHUD
@@ -48,7 +49,8 @@ glEnable(GL_DEPTH_TEST)
 # Engine objects
 # --------------------
 
-camera = FPSCamera()
+player = Player()
+camera = Camera(player)
 input_state = InputState()
 renderer = Renderer()
 debug = DebugHUD((width, height))
@@ -95,15 +97,15 @@ while running:
             running = False
 
     mx, my = pygame.mouse.get_rel()
-    camera.process_mouse(mx, my)
+    player.process_mouse(mx, my)
 
     actions = input_state.update()
 
     # store previous position for physics (ground / wall detection)
-    camera.prev_position = camera.position.copy()
+    player.prev_position = player.position.copy()
 
-    camera.process_keyboard(actions, dt)
-    physics.step(dt, camera)
+    player.process_keyboard(actions, dt)
+    physics.step(dt, player)
 
     # ---------- SSAO Phase A: Normal + Depth pass ----------
     renderer.render_normals(world.objects, camera, width / height)
@@ -118,7 +120,7 @@ while running:
         if obj.mesh is not None:
             renderer.draw_object(obj, camera, width / height)
 
-    debug.draw(clock, camera)
+    debug.draw(clock, player)
     pygame.display.flip()
 
 pygame.quit()
