@@ -52,7 +52,7 @@ cube_vertices = np.array([
 
 # Sphere generated with latitude/longitude tessellation
 # Vertex format: x, y, z, nx, ny, nz, u, v
-def generate_sphere(radius=0.5, stacks=16, slices=32):
+def generate_sphere(radius=0.0, stacks=0, slices=0):
     verts = []
     for i in range(stacks):
         phi1 = np.pi * i / stacks
@@ -95,7 +95,7 @@ def generate_sphere(radius=0.5, stacks=16, slices=32):
 
 sphere_vertices = generate_sphere(radius=0.5, stacks=16, slices=32)
 
-def generate_cylinder(radius=0.5, height=1.0, segments=32):
+def generate_cylinder(radius=0.0, height=0.0, segments=0):
     verts = []
 
     for i in range(segments):
@@ -125,4 +125,4 @@ def generate_cylinder(radius=0.5, height=1.0, segments=32):
 
     return np.array(verts, dtype=np.float32)
 
-cylinder_vertices = generate_cylinder()
+cylinder_vertices = generate_cylinder(radius=1.0, height=5.0, segments=32)

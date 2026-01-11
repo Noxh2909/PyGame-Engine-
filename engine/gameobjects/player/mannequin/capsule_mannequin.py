@@ -47,8 +47,10 @@ class CapsuleMannequin:
     # ---------- model matrices ----------
 
     def body_model_matrix(self) -> NDArray[np.float32]:
-        pos = self.player.position.copy().astype(np.float32)
-        pos[1] += self.player.height * 0.5
+        CYLINDER_HEIGHT = 5.0 
+        
+        pos = self.player.position.copy()
+        pos[1] += CYLINDER_HEIGHT * -0.35
 
         return (
             self._translate(pos)
@@ -60,7 +62,7 @@ class CapsuleMannequin:
         pos = self.player.position.copy().astype(np.float32)
         pos[1] += self.player.height + 0.25
 
-        return self._translate(pos) @ self._scale(0.25)
+        return self._translate(pos) @ self._scale(0.75)
 
     # ---------- render ----------
 

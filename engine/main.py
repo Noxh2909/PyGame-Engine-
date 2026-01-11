@@ -26,7 +26,7 @@ from gameobjects.collider.aabb import AABBCollider
 pygame.init()
 pygame.display.set_caption("3D Engine")
 
-# OpenGL 3.3 Core
+# OpenGL 3.3 Corej
 pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MAJOR_VERSION, 3)
 pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MINOR_VERSION, 3)
 pygame.display.gl_set_attribute(
@@ -86,8 +86,8 @@ mannequin = CapsuleMannequin(
 ground_plane = GameObject(
     mesh=None,              # no rendering mesh
     material=None,          # no material
-    transform=Transform(position=(0, 0, 0), scale=(1000, 1.0, 1000)),
-    collider=AABBCollider(size=(1000, 1.0, 1000))
+    transform=Transform(position=(0, 0, 0), scale=(1000, 0.0, 1000)),
+    collider=AABBCollider(size=(1000, 0.0, 1000))
 )
 
 physics.add_static(ground_plane)
