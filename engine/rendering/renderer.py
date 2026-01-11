@@ -345,7 +345,7 @@ class Renderer:
         glUniform3f(self.obj_u_color, *obj.material.color)
 
         # texture binding (if present)
-        if obj.material and obj.material.texture:
+        if obj.material and obj.material.texture is not None:
             glActiveTexture(GL_TEXTURE0)
             glBindTexture(GL_TEXTURE_2D, obj.material.texture)
             glUniform1i(self.obj_u_texture, 0)

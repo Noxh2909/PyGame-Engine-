@@ -46,7 +46,7 @@ class CapsuleMannequin:
 
     # ---------- model matrices ----------
 
-    def body_model_matrix(self) -> NDArray[np.float32]:
+    def model_matrix(self) -> NDArray[np.float32]:
         CYLINDER_HEIGHT = 5.0 
         
         pos = self.player.position.copy()
@@ -69,7 +69,7 @@ class CapsuleMannequin:
     def draw(self, program):
         glUseProgram(program)
 
-        model = self.body_model_matrix()
+        model = self.model_matrix()
         loc = glGetUniformLocation(program, "u_model")
         glUniformMatrix4fv(loc, 1, GL_TRUE, model)
         self.body_mesh.draw()

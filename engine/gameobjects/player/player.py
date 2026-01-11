@@ -88,7 +88,7 @@ class Player:
 
         self.world_up = np.array((0.0, 1.0, 0.0), dtype=np.float32)
 
-        self.front = np.array((0.0, 0.0, -1.0), dtype=np.float32)
+        self.front = np.zeros(3, dtype=np.float32)
         self.right = np.zeros(3, dtype=np.float32)
         self.up = np.zeros(3, dtype=np.float32)
 

@@ -6,9 +6,16 @@ from OpenGL.GL import (
     glEnable, GL_DEPTH_TEST
 )
 
-from gameobjects.player.player import Player
-from gameobjects.player.camera import Camera
-from gameobjects.player.mannequin.capsule_mannequin import CapsuleMannequin, CapsuleBodyMesh, CapsuleHeadMesh
+from gameobjects.material import Material
+from gameobjects.texture import load_texture
+import os
+
+# from gameobjects.player.mannequin.capsule_mannequin import CapsuleMannequin, CapsuleBodyMesh, CapsuleHeadMesh
+from gameobjects.assets.vertec import cylinder_vertices, sphere_vertices
+from gameobjects.mesh import Mesh  # adjust if your Mesh class lives elsewhere
+
+from gameobjects.player.mannequin.static_mannequin import StaticMannequin
+from gameobjects.player.mannequin.capsule_mannequin import CapsuleMannequin, CapsuleHeadMesh, CapsuleBodyMesh
 
 from rendering.renderer import Renderer
 from input import InputState
@@ -18,6 +25,9 @@ from world import World
 from gameobjects.object import GameObject
 from gameobjects.transform import Transform
 from gameobjects.collider.aabb import AABBCollider
+from gameobjects.player.player import Player
+from gameobjects.player.camera import Camera
+from gameobjects.assets.glb_loader import load_gltf_mesh
 
 # --------------------
 # Pygame / OpenGL setup
@@ -40,6 +50,7 @@ glViewport(0, 0, width, height)
 
 pygame.mouse.set_visible(False)
 pygame.event.set_grab(True)
+pygame.mouse.get_rel()  
 
 version = glGetString(GL_VERSION)
 if version:
@@ -61,23 +72,36 @@ camera = Camera(player, physics)
 world = World("engine/world_gen.json")
 
 # --------------------
-# Capsule mannequin (debug player body)
+# Static mannequin (glTF / .glb)
 # --------------------
 
-from gameobjects.assets.vertec import cylinder_vertices, sphere_vertices
-from gameobjects.mesh import Mesh  # adjust if your Mesh class lives elsewhere
-
-capsule_mesh = Mesh(cylinder_vertices)
-sphere_mesh = Mesh(sphere_vertices)
-
-body_mesh = CapsuleBodyMesh(capsule_mesh)
-head_mesh = CapsuleHeadMesh(sphere_mesh)
-
-mannequin = CapsuleMannequin(
-    player=player,
-    body_mesh=body_mesh,
-    head_mesh=head_mesh,
+vertices, indices, albedo_image = load_gltf_mesh(
+    "engine/gameobjects/assets/models/basic_player.glb"
 )
+
+mannequin_mesh = Mesh(vertices, indices)
+mannequin_height = 1.8  # reale Körperhöhe
+
+# --- create material (upload albedo texture) ---
+mannequin_material = Material(color=(1.0, 1.0, 1.0))
+
+if albedo_image is not None:
+    temp_dir = "engine/gameobjects/assets/_tmp"
+    os.makedirs(temp_dir, exist_ok=True)
+    temp_path = os.path.join(temp_dir, "mannequin_albedo.png")
+
+    albedo_image.save(temp_path)
+    mannequin_material.texture = load_texture(temp_path)
+
+# --- create mannequin ---
+static_mannequin = StaticMannequin(
+    player=player,
+    body_mesh=mannequin_mesh,
+    height=mannequin_height,
+)
+
+# attach material
+static_mannequin.material = mannequin_material
 
 # --------------------
 # Hardcoded world objects
@@ -86,7 +110,7 @@ mannequin = CapsuleMannequin(
 ground_plane = GameObject(
     mesh=None,              # no rendering mesh
     material=None,          # no material
-    transform=Transform(position=(0, 0, 0), scale=(1000, 0.0, 1000)),
+    transform=Transform(position=(0, 0, 0), scale=(100000, 0.0, 100000)),
     collider=AABBCollider(size=(1000, 0.0, 1000))
 )
 
@@ -152,8 +176,11 @@ while running:
     # Draw player mannequin (third-person / debug)
     # --------------------
 
-    if not first_person and capsule_mesh is not None:
-        mannequin.draw(renderer.object_program)
+    # if not first_person and capsule_mesh is not None:
+    #     mannequin.draw(renderer.object_program)
+    
+    if not first_person:
+        renderer.draw_object(static_mannequin, camera, width / height)
 
     debug.draw(clock, player)
     pygame.display.flip()
