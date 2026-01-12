@@ -300,10 +300,10 @@ class Player:
             self.headbob_amount = 0.0
         elif is_sprinting:
             target_height = self.stand_height
-            self.headbob_amount = 0.15
+            self.headbob_amount = 0.08
         else:
             target_height = self.stand_height
-            self.headbob_amount = 0.08
+            self.headbob_amount = 0.04
 
         # Smoothly interpolate player height
         self.height += (target_height - self.height) * min(1.0, self.crouch_speed * delta_time)
