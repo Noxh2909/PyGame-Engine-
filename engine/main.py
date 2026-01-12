@@ -50,7 +50,7 @@ glViewport(0, 0, width, height)
 
 pygame.mouse.set_visible(False)
 pygame.event.set_grab(True)
-# pygame.mouse.get_rel()  
+pygame.mouse.get_rel()  
 
 version = glGetString(GL_VERSION)
 if version:
@@ -67,7 +67,6 @@ input_state = InputState()
 renderer = Renderer()
 debug = DebugHUD((width, height))
 physics = PhysicsWorld()
-
 camera = Camera(player, physics)
 world = World("engine/world_gen.json")
 
@@ -76,7 +75,7 @@ world = World("engine/world_gen.json")
 # --------------------
 
 vertices, indices, albedo_image = load_gltf_mesh(
-    "engine/gameobjects/assets/models/basic_player.glb"
+    "engine/gameobjects/assets/models/fps.glb"
 )
 
 mannequin_mesh = Mesh(vertices, indices)
@@ -179,8 +178,8 @@ while running:
     # if not first_person and capsule_mesh is not None:
     #     mannequin.draw(renderer.object_program)
     
-    if not first_person:
-        renderer.draw_object(static_mannequin, camera, width / height)
+    # if not first_person:
+    renderer.draw_object(static_mannequin, camera, width / height)
 
     debug.draw(clock, player)
     pygame.display.flip()

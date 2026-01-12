@@ -144,7 +144,7 @@ class Player:
         self.yaw += dx
         self.pitch -= dy  # invert Y for FPS feel
 
-        self.pitch = max(-89.0, min(89.0, self.pitch))
+        self.pitch = max(-50.0, min(50.0, self.pitch))
 
         self._update_vectors()
 

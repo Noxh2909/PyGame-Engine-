@@ -9,8 +9,12 @@ class Camera:
         self.player = player
         self.physics_world = physics_world
         self.fov = fov
+        
+        # First-person settings
+        self.fps_forward_offset = 0.40
+        self.fps_eye_vertical_bias = 0.10
 
-        # Third-person settings
+        # Third-person settings        
         self.third_person = False
         self.distance = 4.0      
         self.height_offset = 1.2 
@@ -21,6 +25,12 @@ class Camera:
             # -------- First Person --------
             eye = self.player.position.copy()
             eye[1] += self.player.height + self.player._headbob_offset
+            
+            # postion eye slightly higher then head
+            eye[1] += self.fps_eye_vertical_bias
+
+            # offset prevents clipping through mannequin head
+            eye += self.player.front * self.fps_forward_offset
 
             return look_at(
                 eye,

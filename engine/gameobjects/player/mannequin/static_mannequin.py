@@ -61,12 +61,12 @@ class StaticMannequin:
         are placed on the ground (y = 0).
         """
         pos = self.player.position.copy().astype(np.float32)
-        pos[1] += self.body_height * -0.9  # ground alignment
+        pos[1] += self.body_height * -1.2  # ground alignment
 
         return (
             self._translation(pos)
             @ self._yaw_rotation()
-            @ self._scale(0.025)
+            @ self._scale(2.4) #size of mannequin
         ).astype(np.float32)
 
     # -------------------------------------------------
