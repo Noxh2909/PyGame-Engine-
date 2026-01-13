@@ -6,7 +6,7 @@ from OpenGL.GL import (
     glEnable, GL_DEPTH_TEST
 )
 
-from gameobjects.material import Material
+from gameobjects.material_lookup import Material
 from gameobjects.texture import load_texture
 import os
 

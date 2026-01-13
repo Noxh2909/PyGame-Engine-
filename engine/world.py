@@ -6,7 +6,7 @@ from gameobjects.mesh import Mesh, MeshRegistry
 from gameobjects.object import GameObject
 from gameobjects.transform import Transform
 from gameobjects.collider.aabb import AABBCollider
-from gameobjects.material import Material
+from gameobjects.material_lookup import Material
 from gameobjects.material_lookup import MaterialRegistry
 
 class World:
