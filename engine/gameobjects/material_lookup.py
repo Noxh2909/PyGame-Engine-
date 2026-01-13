@@ -13,7 +13,8 @@ MATERIAL_TABLE = {
     "destiny": lambda: Material(texture=load_texture(os.path.join(texture_dir, "destiny2.jpeg"))),
     "yasu": lambda: Material(texture=load_texture(os.path.join(texture_dir, "yasu.jpeg"))),
     "js": lambda: Material(texture=load_texture(os.path.join(texture_dir, "js.jpeg" ))),
-    "sun": lambda: Material(color=(1,1,1), emissive=True)
+    "elian": lambda: Material(texture=load_texture(os.path.join(texture_dir, "elian.jpeg" ))),
+    "sun": lambda: Material(color=(1,1,1), emissive=True),
 }
 
 class MaterialRegistry:

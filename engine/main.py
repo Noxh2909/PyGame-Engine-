@@ -10,12 +10,9 @@ from gameobjects.material import Material
 from gameobjects.texture import load_texture
 import os
 
-# from gameobjects.player.mannequin.capsule_mannequin import CapsuleMannequin, CapsuleBodyMesh, CapsuleHeadMesh
-from gameobjects.assets.vertec import cylinder_vertices, sphere_vertices
 from gameobjects.mesh import Mesh  # adjust if your Mesh class lives elsewhere
 
-from gameobjects.player.mannequin.static_mannequin import StaticMannequin
-from gameobjects.player.mannequin.capsule_mannequin import CapsuleMannequin, CapsuleHeadMesh, CapsuleBodyMesh
+from gameobjects.player.mannequin.mannequin import Mannequin
 
 from rendering.renderer import Renderer
 from input import InputState
@@ -27,7 +24,7 @@ from gameobjects.transform import Transform
 from gameobjects.collider.aabb import AABBCollider
 from gameobjects.player.player import Player
 from gameobjects.player.camera import Camera
-from gameobjects.assets.glb_loader import load_gltf_mesh
+from gameobjects.assets.glb_loader import GLBLoader
 
 # --------------------
 # Pygame / OpenGL setup
@@ -74,9 +71,12 @@ world = World("engine/world_gen.json")
 # Static mannequin (glTF / .glb)
 # --------------------
 
-vertices, indices, albedo_image = load_gltf_mesh(
-    "engine/gameobjects/assets/models/fps.glb"
-)
+loader = GLBLoader("engine/gameobjects/assets/models/idle.glb")
+gltf_data = loader.load_first_mesh()
+
+vertices = gltf_data["vertices"]
+indices = gltf_data["indices"]
+albedo_image = gltf_data["albedo"]
 
 mannequin_mesh = Mesh(vertices, indices)
 mannequin_height = 1.8  # reale Körperhöhe
@@ -93,7 +93,7 @@ if albedo_image is not None:
     mannequin_material.texture = load_texture(temp_path)
 
 # --- create mannequin ---
-static_mannequin = StaticMannequin(
+static_mannequin = Mannequin(
     player=player,
     body_mesh=mannequin_mesh,
     height=mannequin_height,
