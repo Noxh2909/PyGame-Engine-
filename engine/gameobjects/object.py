@@ -1,5 +1,3 @@
-import numpy as np
-    
 class GameObject:
     def __init__(self, mesh, transform, material=None, collider=None, light=None):
         """
