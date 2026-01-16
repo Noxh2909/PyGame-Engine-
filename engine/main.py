@@ -24,7 +24,7 @@ from gameobjects.transform import Transform
 from gameobjects.collider.aabb import AABBCollider
 from gameobjects.player.player import Player
 from gameobjects.player.camera import Camera
-from gameobjects.assets.glb_loader import GLBLoader
+from gameobjects.glb_loader import GLBLoader
 
 # --------------------
 # Pygame / OpenGL setup
@@ -71,7 +71,7 @@ world = World("engine/world_gen.json")
 # Static mannequin (glTF / .glb)
 # --------------------
 
-loader = GLBLoader("engine/gameobjects/assets/models/idle.glb")
+loader = GLBLoader("assets/models/idle.glb")
 gltf_data = loader.load_first_mesh()
 
 vertices = gltf_data["vertices"]

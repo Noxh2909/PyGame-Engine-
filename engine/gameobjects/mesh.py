@@ -7,7 +7,7 @@ from OpenGL.GL import (
     GL_ARRAY_BUFFER, GL_STATIC_DRAW, GL_ELEMENT_ARRAY_BUFFER,
     GL_FLOAT, GL_FALSE, GL_TRIANGLES, GL_UNSIGNED_INT
 )
-from gameobjects.assets.vertec import cube_vertices, sphere_vertices
+from gameobjects.vertec import cube_vertices, sphere_vertices
 
 class Mesh:
     def __init__(self, vertices: np.ndarray, indices: np.ndarray | None = None):

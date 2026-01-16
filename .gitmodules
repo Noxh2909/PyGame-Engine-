@@ -1,0 +1,3 @@
+[submodule "tools/ufbx"]
+	path = tools/ufbx
+	url = https://github.com/ufbx/ufbx.git

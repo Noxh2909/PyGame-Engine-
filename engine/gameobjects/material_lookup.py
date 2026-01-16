@@ -1,8 +1,13 @@
 from gameobjects.texture import load_texture
 import os
 
-base_dir = os.path.dirname(os.path.dirname(__file__))
-texture_dir = os.path.join(base_dir, "gameobjects", "assets", "textures")
+ENGINE_DIR = os.path.dirname(os.path.dirname(__file__))   # .../pygame/engine
+PROJECT_ROOT = os.path.dirname(ENGINE_DIR)                # .../pygame
+
+texture_dir = os.path.join(PROJECT_ROOT, "assets", "textures")
+
+if not os.path.isdir(texture_dir):
+    raise RuntimeError(f"Texture directory not found: {texture_dir}")
 
 MATERIAL_TABLE = {
     "white": lambda: Material(color=(1,1,1)),
