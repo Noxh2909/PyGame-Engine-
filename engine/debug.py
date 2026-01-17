@@ -136,9 +136,10 @@ class DebugHUD:
         if not self.enabled:
             return
 
+        pos = camera.transform.position
         lines = [
             f"FPS: {clock.get_fps():.1f}",
-            f"Pos: x={camera.position[0]:.2f} y={camera.position[1]:.2f} z={camera.position[2]:.2f}",
+            f"Pos: x={pos[0]:.2f} y={pos[1]:.2f} z={pos[2]:.2f}",
         ]
 
         glUseProgram(self.prog)

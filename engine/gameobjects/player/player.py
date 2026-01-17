@@ -1,5 +1,6 @@
 import numpy as np
 import math
+from gameobjects.transform import Transform
 
 
 def normalize(v: np.ndarray) -> np.ndarray:
@@ -62,9 +63,9 @@ class Player:
         :param sensitivity: The sensitivity of the mouse
         :param fov: The field of view of the camera
         """
-        self.position = np.array(position, dtype=np.float32)
+        self.transform = Transform(position=position)
         # Previous frame position (set each frame by main.py for physics)
-        self.prev_position = self.position.copy()
+        self.prev_position = self.transform.position.copy()
         self.yaw = yaw
         self.pitch = pitch
         self.speed = speed
@@ -74,17 +75,21 @@ class Player:
         self.velocity_y = 0.0
         self.on_ground = False
         
-        # Player hitbox
-        self.radius = 0.35     # Breite des Spielers (X/Z)
-        self.height = 2.0      # Gesamthöhe (Y)
+        # Player hitbox (physics – constant)
+        self.radius = 0.35
+        self.capsule_height = 2.0   # full body height (feet → head)
+
+        # Camera heights (visual only)
+        self.eye_height = 1.6
+        self.crouch_eye_height = 0.5
+
+        # Runtime camera height (interpolated)
+        self.current_eye_height = self.eye_height
         
         # Crouch
         self.stand_height = 1.6
         self.crouch_height = 0.5
         self.crouch_speed = 10.0  # how fast we interpolate between stand/crouch
-
-        # Current interpolated player height (used by physics & camera)
-        self.height = self.stand_height
 
         self.world_up = np.array((0.0, 1.0, 0.0), dtype=np.float32)
 
@@ -147,6 +152,11 @@ class Player:
         self.pitch = max(-50.0, min(50.0, self.pitch))
 
         self._update_vectors()
+        self.transform.rotation[:] = (
+            0.0,
+            math.radians(self.yaw),
+            0.0
+        )
 
     def process_keyboard(self, keys: dict, delta_time: float):
         """
@@ -196,7 +206,7 @@ class Player:
         # -----------------
         if self.on_ground and not self.is_sliding:
             self._air_velocity = move_dir * current_speed
-            self.position += self._air_velocity * delta_time
+            self.transform.position += self._air_velocity * delta_time
 
         # -----------------
         # Jump (impulse only)
@@ -247,7 +257,7 @@ class Player:
                     * delta_time
                 )
 
-            self.position += self._air_velocity * delta_time
+            self.transform.position += self._air_velocity * delta_time
 
         # -----------------
         # Slide cancel conditions (input-driven)
@@ -274,7 +284,7 @@ class Player:
         # Slide update (friction-based deceleration)
         # -----------------
         if self.is_sliding:
-            self.position += self.slide_velocity * delta_time
+            self.transform.position += self.slide_velocity * delta_time
 
             # Apply friction
             speed = np.linalg.norm(self.slide_velocity)
@@ -305,8 +315,10 @@ class Player:
             target_height = self.stand_height
             self.headbob_amount = 0.04
 
-        # Smoothly interpolate player height
-        self.height += (target_height - self.height) * min(1.0, self.crouch_speed * delta_time)
+        # Smoothly interpolate camera (eye) height only
+        self.current_eye_height += (
+            target_height - self.current_eye_height
+        ) * min(1.0, self.crouch_speed * delta_time)
 
         # -----------------
         # Head bob (only when moving on ground)

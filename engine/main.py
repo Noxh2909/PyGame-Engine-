@@ -1,4 +1,6 @@
 import pygame
+import math
+import numpy as np
 from OpenGL.GL import (
     glClear, glClearColor,
     GL_COLOR_BUFFER_BIT, GL_DEPTH_BUFFER_BIT,
@@ -24,7 +26,13 @@ from gameobjects.transform import Transform
 from gameobjects.collider.aabb import AABBCollider
 from gameobjects.player.player import Player
 from gameobjects.player.camera import Camera
-from gameobjects.glb_loader import GLBLoader
+
+from assets.animations.json_loader import FBXJsonLoader
+from assets.animations.skeleton import Skeleton
+
+# NOTE:
+# *_mannequin.json contains ONLY skeleton + skinning data (no geometry).
+# Geometry is loaded separately and combined here.
 
 # --------------------
 # Pygame / OpenGL setup
@@ -68,39 +76,75 @@ camera = Camera(player, physics)
 world = World("engine/world_gen.json")
 
 # --------------------
-# Static mannequin (glTF / .glb)
+# Character from FBX → JSON
 # --------------------
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ASSETS_DIR = os.path.join(BASE_DIR, "assets", "models")
 
-loader = GLBLoader("assets/models/idle.glb")
-gltf_data = loader.load_first_mesh()
+loader = FBXJsonLoader()
 
-vertices = gltf_data["vertices"]
-indices = gltf_data["indices"]
-albedo_image = gltf_data["albedo"]
+mesh_data = loader.load_mesh(
+    os.path.join(ASSETS_DIR, "Punching_mesh.json")
+)
 
-mannequin_mesh = Mesh(vertices, indices)
-mannequin_height = 1.8  # reale Körperhöhe
+skin_data = loader.load_skin(
+    os.path.join(ASSETS_DIR, "Punching_skin.json")
+)
+
+skeleton_data = loader.load_skeleton(
+    os.path.join(ASSETS_DIR, "Punching_skeleton.json")
+)
+
+animations = loader.load_animations(
+    os.path.join(ASSETS_DIR, "Punching_animation.json")
+)
+
+# --------------------
+# Apply skinning data from mannequin JSON
+# --------------------
+vertices = np.array(mesh_data["vertices"], dtype=np.float32)
+# Model units already converted during FBX export
+# vertices *= 0.01
+indices  = np.array(mesh_data["indices"], dtype=np.uint32)
+joints   = np.array(skin_data["joints"], dtype=np.int32)
+weights  = np.array(skin_data["weights"], dtype=np.float32)
+
+mannequin_mesh = Mesh(
+    vertices=vertices,
+    indices=indices,
+    joints=joints,
+    weights=weights,
+)
+
+mannequin_height = 1.8
+
+# Skeleton
+parents = np.array(skeleton_data["parents"], dtype=np.int32)
+inverse_bind = np.array(skeleton_data["inverse_bind"], dtype=np.float32)
+
+skeleton = Skeleton(parents, inverse_bind)
+if not hasattr(skeleton, "animations"):
+    skeleton.animations = {}
+
+# register animations (no playback yet)
+for name, anim in animations.items():
+    skeleton.animations[name] = anim
 
 # --- create material (upload albedo texture) ---
 mannequin_material = Material(color=(1.0, 1.0, 1.0))
 
-if albedo_image is not None:
-    temp_dir = "engine/gameobjects/assets/skins"
-    os.makedirs(temp_dir, exist_ok=True)
-    temp_path = os.path.join(temp_dir, "mannequin_albedo.png")
-
-    albedo_image.save(temp_path)
-    mannequin_material.texture = load_texture(temp_path)
-
 # --- create mannequin ---
-static_mannequin = Mannequin(
+mannequin = Mannequin(
     player=player,
     body_mesh=mannequin_mesh,
     height=mannequin_height,
 )
 
+mannequin.is_skinned = True
+mannequin.skeleton = skeleton
+
 # attach material
-static_mannequin.material = mannequin_material
+mannequin.material = mannequin_material
 
 # --------------------
 # Hardcoded world objects
@@ -133,8 +177,14 @@ for obj in world.objects:
 
 clock = pygame.time.Clock()
 running = True
-first_person = True 
-camera.third_person = False
+
+# view mode
+first_person = True
+camera.third_person = False  # camera follows player in TPS
+
+# FPS/TPS visibility control
+# FPS  -> body hidden
+# TPS  -> full body visible
 
 while running:
     dt = clock.tick(240) / 1000.0
@@ -153,10 +203,19 @@ while running:
         camera.third_person = not first_person
 
     # store previous position for physics (ground / wall detection)
-    player.prev_position = player.position.copy()
+    player.prev_position = player.transform.position.copy()
 
     player.process_keyboard(actions, dt)
     physics.step(dt, player)
+
+    # --- Skeleton update ---
+    skeleton.reset_pose()
+
+    # sync mannequin root with player (BODY follows yaw only)
+    # sync mannequin with player (position + yaw)
+    mannequin.update_from_player(player)
+
+    skeleton.update()
 
     # ---------- SSAO Phase A: Normal + Depth pass ----------
     renderer.render_normals(world.objects, camera, width / height)
@@ -172,14 +231,9 @@ while running:
             renderer.draw_object(obj, camera, width / height)
 
     # --------------------
-    # Draw player mannequin (third-person / debug)
+    # Draw player mannequin
     # --------------------
-
-    # if not first_person and capsule_mesh is not None:
-    #     mannequin.draw(renderer.object_program)
-    
-    # if not first_person:
-    renderer.draw_object(static_mannequin, camera, width / height)
+    renderer.draw_object(mannequin, camera, width / height)
 
     debug.draw(clock, player)
     pygame.display.flip()

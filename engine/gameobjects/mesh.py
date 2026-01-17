@@ -10,12 +10,30 @@ from OpenGL.GL import (
 from gameobjects.vertec import cube_vertices, sphere_vertices
 
 class Mesh:
-    def __init__(self, vertices: np.ndarray, indices: np.ndarray | None = None):
+    def __init__(
+        self,
+        vertices: np.ndarray,
+        indices: np.ndarray | None = None,
+        joints: np.ndarray | None = None,
+        weights: np.ndarray | None = None,
+    ):
         """
         vertices: interleaved array [pos(3), normal(3), uv(2)]
         indices: optional index buffer (uint32)
         """
-        self.vertex_count = len(vertices) // 8
+        self.is_skinned = joints is not None and weights is not None
+
+        if self.is_skinned and weights is not None:
+            weights = weights.astype(np.float32)
+            wsum = weights.sum(axis=1, keepdims=True)
+            wsum[wsum == 0.0] = 1.0
+            weights /= wsum
+
+        if vertices.ndim == 2:
+            self.vertex_count = vertices.shape[0]
+        else:
+            self.vertex_count = len(vertices) // (16 if self.is_skinned else 8)
+
         self.index_count = len(indices) if indices is not None else 0
         self.has_indices = indices is not None
 
@@ -27,6 +45,7 @@ class Mesh:
 
         # VBO
         glBindBuffer(GL_ARRAY_BUFFER, self.vbo)
+        vertices = vertices.astype(np.float32)
         glBufferData(GL_ARRAY_BUFFER, vertices.nbytes, vertices, GL_STATIC_DRAW)
 
         # EBO (optional)
@@ -39,7 +58,7 @@ class Mesh:
                 GL_STATIC_DRAW,
             )
 
-        stride = 8 * 4  # 8 floats * 4 bytes
+        stride = (16 if self.is_skinned else 8) * 4  # floats * 4 bytes
 
         # position (location = 0)
         glEnableVertexAttribArray(0)
@@ -52,6 +71,19 @@ class Mesh:
         # uv (location = 2)
         glEnableVertexAttribArray(2)
         glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, ctypes.c_void_p(6 * 4))
+
+        if self.is_skinned:
+            # joints (location = 3) – stored as floats, cast to ivec4 in shader
+            glEnableVertexAttribArray(3)
+            glVertexAttribPointer(
+                3, 4, GL_FLOAT, GL_FALSE, stride, ctypes.c_void_p(8 * 4)
+            )
+
+            # weights (location = 4)
+            glEnableVertexAttribArray(4)
+            glVertexAttribPointer(
+                4, 4, GL_FLOAT, GL_FALSE, stride, ctypes.c_void_p(12 * 4)
+            )
 
         glBindVertexArray(0)
 

@@ -4,7 +4,7 @@ import os
 ENGINE_DIR = os.path.dirname(os.path.dirname(__file__))   # .../pygame/engine
 PROJECT_ROOT = os.path.dirname(ENGINE_DIR)                # .../pygame
 
-texture_dir = os.path.join(PROJECT_ROOT, "assets", "textures")
+texture_dir = os.path.join("engine", "assets", "textures")
 
 if not os.path.isdir(texture_dir):
     raise RuntimeError(f"Texture directory not found: {texture_dir}")

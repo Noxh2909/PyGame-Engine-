@@ -79,6 +79,7 @@ def create_program(vs_src, fs_src):
 GRID_VERTEX_SHADER_SRC = load_shader("engine/rendering/shader/grid.vert")
 GRID_FRAGMENT_SHADER_SRC = load_shader("engine/rendering/shader/grid.frag")
 OBJECT_VERTEX_SHADER_SRC = load_shader("engine/rendering/shader/object.vert")
+SKINNED_VERTEX_SHADER_SRC = load_shader("engine/rendering/shader/skinned_object.vert")
 OBJECT_FRAGMENT_SHADER_SRC = load_shader("engine/rendering/shader/object.frag")
 NORMAL_FRAGMENT_SHADER_SRC = load_shader("engine/rendering/shader/normal.frag")
 SSAO_VERTEX_SHADER_SRC = load_shader("engine/rendering/shader/ssao.vert")
@@ -90,7 +91,7 @@ SSAO_BLUR_FRAGMENT_SHADER_SRC = load_shader("engine/rendering/shader/ssao_blur.f
 # =========================
 
 class Renderer:
-    def __init__(self, plane_size=50.0):
+    def __init__(self, plane_size=200.0):
         """
         Docstring für __init__
 
@@ -99,6 +100,12 @@ class Renderer:
         """
         self.grid_program   = create_program(GRID_VERTEX_SHADER_SRC, GRID_FRAGMENT_SHADER_SRC)
         self.object_program = create_program(OBJECT_VERTEX_SHADER_SRC, OBJECT_FRAGMENT_SHADER_SRC)
+        self.skinned_program = create_program(SKINNED_VERTEX_SHADER_SRC, OBJECT_FRAGMENT_SHADER_SRC)
+        # skinned shader uniforms
+        self.skin_u_view  = glGetUniformLocation(self.skinned_program, "u_view")
+        self.skin_u_proj  = glGetUniformLocation(self.skinned_program, "u_proj")
+        self.skin_u_model = glGetUniformLocation(self.skinned_program, "u_model")
+        self.skin_u_bones = glGetUniformLocation(self.skinned_program, "u_bones")
 
         self.normal_program = create_program(
             OBJECT_VERTEX_SHADER_SRC,
@@ -261,6 +268,7 @@ class Renderer:
         self.light_pos = (0.0, 0.0, 0.0)
         self.light_color = (1.0, 1.0, 1.0)
         self.light_intensity = 0.0
+        
     def set_light(self, position, color, intensity):
         """
         Set the active point light (used by all objects).
@@ -331,74 +339,89 @@ class Renderer:
         :param camera: The camera object
         :param aspect: The aspect ratio of the viewport
         """
-        glUseProgram(self.object_program)
-
-        view = camera.get_view_matrix()
-        proj = camera.get_projection_matrix(aspect)
-        model = obj.transform.matrix()
-
-        glUniformMatrix4fv(self.obj_u_view, 1, GL_TRUE, view)
-        glUniformMatrix4fv(self.obj_u_proj, 1, GL_TRUE, proj)
-        glUniformMatrix4fv(self.obj_u_model, 1, GL_TRUE, model)
-
-        # material color fallback
-        glUniform3f(self.obj_u_color, *obj.material.color)
-
-        # texture binding (if present)
-        if obj.material and obj.material.texture is not None:
-            glActiveTexture(GL_TEXTURE0)
-            glBindTexture(GL_TEXTURE_2D, obj.material.texture)
-            glUniform1i(self.obj_u_texture, 0)
-            glUniform1i(self.obj_u_use_texture, 1)
+        if obj.is_skinned:
+            # --- Skinned rendering path ---
+            glUseProgram(self.skinned_program)
+            view = camera.get_view_matrix()
+            proj = camera.get_projection_matrix(aspect)
+            model = obj.transform.matrix()
+            glUniformMatrix4fv(self.skin_u_view, 1, GL_TRUE, view)
+            glUniformMatrix4fv(self.skin_u_proj, 1, GL_TRUE, proj)
+            glUniformMatrix4fv(self.skin_u_model, 1, GL_TRUE, model)
+            # Upload bone matrices
+            glUniformMatrix4fv(self.skin_u_bones, obj.skeleton.bone_count, GL_FALSE, obj.skeleton.final_mats_flat)
+            # Do NOT upload any of the following:
+            # obj_u_color, textures, SSAO, lighting, texture_mode, triplanar, emissive
         else:
-            glUniform1i(self.obj_u_use_texture, 0)
+            # --- Static rendering path (unchanged) ---
+            glUseProgram(self.object_program)
 
-        # emissive flag (sun / lamps)
-        is_emissive = obj.material is not None and getattr(obj.material, "emissive", False)
-        glUniform1i(self.obj_u_emissive, int(is_emissive))
+            view = camera.get_view_matrix()
+            proj = camera.get_projection_matrix(aspect)
+            model = obj.transform.matrix()
 
-        # SSAO texture
-        glActiveTexture(GL_TEXTURE1)
-        glBindTexture(GL_TEXTURE_2D, self.ssao_tex)
-        glUniform1i(self.obj_u_ssao, 1)
-        glUniform2f(self.obj_u_screen_size, 1280.0, 720.0)
+            glUniformMatrix4fv(self.obj_u_view, 1, GL_TRUE, view)
+            glUniformMatrix4fv(self.obj_u_proj, 1, GL_TRUE, proj)
+            glUniformMatrix4fv(self.obj_u_model, 1, GL_TRUE, model)
 
-        mat = obj.material
-        mode = getattr(mat, "texture_scale_mode", None) or "default"
+            # material color fallback
+            glUniform3f(self.obj_u_color, *obj.material.color)
 
-        # -------- default: UV mapping (object-local) --------
-        if mode == "default":
-            # Shader: u_texture_mode == 0 → UV-Mapping
-            glUniform1i(self.obj_u_texture_mode, 0)
+            # texture binding (if present)
+            if obj.material and obj.material.texture is not None:
+                glActiveTexture(GL_TEXTURE0)
+                glBindTexture(GL_TEXTURE_2D, obj.material.texture)
+                glUniform1i(self.obj_u_texture, 0)
+                glUniform1i(self.obj_u_use_texture, 1)
+            else:
+                glUniform1i(self.obj_u_use_texture, 0)
 
-            # triplanar scale wird hier NICHT benutzt
-            glUniform1f(self.obj_u_triplanar_scale, 1.0)
+            # emissive flag (sun / lamps)
+            is_emissive = obj.material is not None and getattr(obj.material, "emissive", False)
+            glUniform1i(self.obj_u_emissive, int(is_emissive))
 
-        # -------- triplanar: world-space --------
-        elif mode == "triplanar":
-            glUniform1i(self.obj_u_texture_mode, 1)
+            # SSAO texture
+            glActiveTexture(GL_TEXTURE1)
+            glBindTexture(GL_TEXTURE_2D, self.ssao_tex)
+            glUniform1i(self.obj_u_ssao, 1)
+            glUniform2f(self.obj_u_screen_size, 1280.0, 720.0)
 
-            # klassisches world-aligned triplanar
-            glUniform1f(self.obj_u_triplanar_scale, 0.1)
+            mat = obj.material
+            mode = getattr(mat, "texture_scale_mode", None) or "default"
 
-        # -------- manual triplanar --------
-        elif mode == "manual":
-            assert mat.texture_scale_value is not None, \
-                "texture_scale_value required when texture_scale_mode == 'manual'"
+            # -------- default: UV mapping (object-local) --------
+            if mode == "default":
+                # Shader: u_texture_mode == 0 → UV-Mapping
+                glUniform1i(self.obj_u_texture_mode, 0)
 
-            glUniform1i(self.obj_u_texture_mode, 1)
-            glUniform1f(self.obj_u_triplanar_scale, mat.texture_scale_value)
+                # triplanar scale wird hier NICHT benutzt
+                glUniform1f(self.obj_u_triplanar_scale, 1.0)
 
-        # -------- safety fallback --------
-        else:
-            glUniform1i(self.obj_u_texture_mode, 0)
-            glUniform1f(self.obj_u_triplanar_scale, 1.0)
+            # -------- triplanar: world-space --------
+            elif mode == "triplanar":
+                glUniform1i(self.obj_u_texture_mode, 1)
 
-        # lighting (dynamic light from world)
-        glUniform3f(self.obj_u_light_pos, *self.light_pos)
-        glUniform3f(self.obj_u_light_color, *self.light_color)
-        glUniform1f(self.obj_u_light_intensity, self.light_intensity)
-        glUniform1f(self.obj_u_ambient_strength, 0.25)
+                # klassisches world-aligned triplanar
+                glUniform1f(self.obj_u_triplanar_scale, 0.1)
+
+            # -------- manual triplanar --------
+            elif mode == "manual":
+                assert mat.texture_scale_value is not None, \
+                    "texture_scale_value required when texture_scale_mode == 'manual'"
+
+                glUniform1i(self.obj_u_texture_mode, 1)
+                glUniform1f(self.obj_u_triplanar_scale, mat.texture_scale_value)
+
+            # -------- safety fallback --------
+            else:
+                glUniform1i(self.obj_u_texture_mode, 0)
+                glUniform1f(self.obj_u_triplanar_scale, 1.0)
+
+            # lighting (dynamic light from world)
+            glUniform3f(self.obj_u_light_pos, *self.light_pos)
+            glUniform3f(self.obj_u_light_color, *self.light_color)
+            glUniform1f(self.obj_u_light_intensity, self.light_intensity)
+            glUniform1f(self.obj_u_ambient_strength, 0.25)
 
         obj.mesh.draw()
 

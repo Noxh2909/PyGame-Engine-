@@ -26,8 +26,7 @@ case "$answer" in
       exit 1
     fi
 
-    IN_FBX="$SRC_DIR/../../assets/models/${name}.fbx"
-    OUT_JSON="$SRC_DIR/../../assets/models/${name}.json"
+    IN_FBX="$SRC_DIR/../../engine/assets/models/${name}.fbx"
 
     if [ ! -f "$IN_FBX" ]; then
       echo "FBX file not found: $IN_FBX"
@@ -35,9 +34,15 @@ case "$answer" in
     fi
 
     echo "Running fbx_to_json..."
-    "$OUT_BIN" "$IN_FBX" > "$OUT_JSON"
+    # Exporter writes multiple JSON files automatically (mesh / skin / skeleton / animation)
+    "$OUT_BIN" "$IN_FBX"
 
-    echo "Written: $OUT_JSON"
+    echo "Expected outputs:"
+    echo "  ${name}_mesh.json"
+    echo "  ${name}_skin.json"
+    echo "  ${name}_skeleton.json"
+    echo "  ${name}_animation.json"
+    echo "in engine/assets/models/"
     ;;
   *)
     echo "Execution skipped."

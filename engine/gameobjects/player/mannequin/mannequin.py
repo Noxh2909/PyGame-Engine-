@@ -1,7 +1,11 @@
 import math
-import numpy as np
+import numpy as np       
+from typing import Optional
 from numpy.typing import NDArray
+
 from gameobjects.object import GameObject
+from assets.animations.skeleton import Skeleton
+from gameobjects.transform import Transform
 
 class Mannequin(GameObject):
     """
@@ -19,37 +23,47 @@ class Mannequin(GameObject):
         height: float = 0.0,
         material=None,
     ):
+        # -------------------------
+        # Runtime skinning attributes
+        # -------------------------
+
+        self.is_skinned: bool = False
+        self.skeleton: Optional[Skeleton] = None
+
         self.player = player
         self.body_mesh = body_mesh
+        # Visual body height (model-space, not camera / gameplay height)
         self.body_height = height
 
         super().__init__(
             mesh=body_mesh,
-            transform=self,
+            transform=Transform(),
             material=material,
         )
 
-    # -------------------------------------------------
-    # Static transform helpers (TPS / world mannequin)
-    # -------------------------------------------------
+        self.transform.scale[:] = (0.01, 0.01, 0.01)
 
-    def _yaw_rotation(self) -> NDArray[np.float32]:
-        if self.player is None:
-            return np.eye(4, dtype=np.float32)
+        # FBX / Mixamo forward-axis correction
+        # Engine expects +Z forward, model is rotated in source file
+        self.yaw_sign: float = -1.0
+        self.yaw_offset: float = math.radians(90.0)
 
-        front = self.player.front
-        yaw = math.atan2(front[0], front[2])
-        c = math.cos(yaw)
-        s = math.sin(yaw)
+    def update_from_player(self, player):
+        """
+        Synchronize mannequin with player transform.
+        - Position = player feet position
+        - Rotation = player yaw only (body follows camera yaw)
+        """
 
-        return np.array(
-            [
-                [ c, 0.0, s, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [-s, 0.0, c, 0.0],
-                [0.0, 0.0, 0.0, 1.0],
-            ],
-            dtype=np.float32,
+        # Position: feet-on-ground
+        self.transform.position[:] = player.transform.position
+
+        # Rotation: yaw only (no pitch / roll)
+        yaw = player.transform.rotation[1]
+        self.transform.rotation[:] = (
+            0.0,
+            self.yaw_sign * yaw + self.yaw_offset,
+            0.0,
         )
 
     def _translation(self, pos: np.ndarray) -> NDArray[np.float32]:
@@ -57,24 +71,19 @@ class Mannequin(GameObject):
         T[:3, 3] = pos
         return T
 
-    def _scale(self, s: float = 1.0) -> NDArray[np.float32]:
-        S = np.eye(4, dtype=np.float32)
-        S[0, 0] = S[1, 1] = S[2, 2] = s
-        return S
-
     def model_matrix(self) -> NDArray[np.float32]:
-        if self.player is None:
-            return np.eye(4, dtype=np.float32)
-
-        pos = self.player.position.copy().astype(np.float32)
-        pos[1] += self.body_height * -1.2
-
-        return (
-            self._translation(pos)
-            @ self._yaw_rotation()
-            @ self._scale(2.4)
-        ).astype(np.float32)
+        # Body follows transform only (rotation handled externally)
+        T = self._translation(self.transform.position)
+        R = self.transform.rotation_matrix()
+        S = self.transform.scale_matrix()
+        return (T @ R @ S).astype(np.float32)
         
     # GameObject transform interface
     def matrix(self) -> NDArray[np.float32]:
-        return self.model_matrix()
+        return self.transform.model_matrix()
+
+    # @property
+    # def bone_count(self) -> int:
+    #     if self.skeleton is None:
+    #         return 0
+    #     return len(self.skeleton.bones)

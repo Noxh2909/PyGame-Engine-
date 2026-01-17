@@ -14,3 +14,5 @@ class GameObject:
         self.material = material
         self.collider = collider
         self.light = light
+        self.is_skinned = False
+        self.skeleton = None

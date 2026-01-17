@@ -23,8 +23,8 @@ class Camera:
     def get_view_matrix(self) -> np.ndarray:
         if not self.third_person:
             # -------- First Person --------
-            eye = self.player.position.copy()
-            eye[1] += self.player.height + self.player._headbob_offset
+            eye = self.player.transform.position.copy()
+            eye[1] += self.player.current_eye_height + self.player._headbob_offset
             
             # postion eye slightly higher then head
             eye[1] += self.fps_eye_vertical_bias
@@ -40,8 +40,8 @@ class Camera:
 
         else:
             # -------- Third Person (collision aware) --------
-            target = self.player.position.copy()
-            target[1] += self.player.height * 0.8
+            target = self.player.transform.position.copy()
+            target[1] += self.player.capsule_height * 0.9
 
             # desired camera position behind the player
             desired_eye = (
@@ -78,3 +78,6 @@ class Camera:
         proj[3, 2] = -1.0
 
         return proj
+        
+
+# Camera patched – what’s next?

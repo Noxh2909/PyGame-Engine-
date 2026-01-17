@@ -7,52 +7,19 @@
 #define UFBX_IMPLEMENTATION
 #include "../ufbx/ufbx.h"
 
-// We use nlohmann/json single-header
+// nlohmann/json single-header
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
 
 static std::array<float, 16> flatten_mat4(const ufbx_matrix &m)
 {
-    // ufbx_matrix is 3x4 (no last row), expand to 4x4
-    // Column-major (OpenGL style)
+    // ufbx_matrix is 3x4, expand to 4x4 (column-major)
     return {
         (float)m.m00, (float)m.m10, (float)m.m20, 0.0f,
         (float)m.m01, (float)m.m11, (float)m.m21, 0.0f,
         (float)m.m02, (float)m.m12, (float)m.m22, 0.0f,
         (float)m.m03, (float)m.m13, (float)m.m23, 1.0f,
     };
-}
-
-static void export_vec3_curve(json &out, const ufbx_anim_curve *curve)
-{
-    json times = json::array();
-    json values = json::array();
-
-    for (size_t i = 0; i < curve->keyframes.count; i++) {
-        const ufbx_keyframe &k = curve->keyframes.data[i];
-        times.push_back((double)k.time);
-        values.push_back((double)k.value);
-    }
-
-    out["times"] = times;
-    out["values"] = values;
-}
-
-static void export_quat_curve(json &out, const ufbx_anim_curve *curve)
-{
-    json times = json::array();
-    json values = json::array();
-
-    for (size_t i = 0; i < curve->keyframes.count; i++) {
-        const ufbx_keyframe &k = curve->keyframes.data[i];
-        times.push_back((double)k.time);
-        values.push_back({
-            (double)k.value
-        });
-    }
-
-    out["times"] = times;
-    out["values"] = values;
 }
 
 int main(int argc, char **argv)
@@ -64,6 +31,18 @@ int main(int argc, char **argv)
 
     const char *path = argv[1];
 
+    std::string input_path = path;
+    std::string base = input_path;
+    size_t dot = base.find_last_of('.');
+    if (dot != std::string::npos) {
+        base = base.substr(0, dot);
+    }
+
+    std::string mesh_path      = base + "_mesh.json";
+    std::string skin_path      = base + "_skin.json";
+    std::string skeleton_path  = base + "_skeleton.json";
+    std::string animation_path = base + "_animation.json";
+
     ufbx_error error;
     ufbx_scene *scene = ufbx_load_file(path, nullptr, &error);
     if (!scene) {
@@ -71,17 +50,22 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    json root;
+    json mesh_root;
+    json skin_root;
+    json skeleton_root;
+    json animation_root;
 
-    // ------------------------------------------------------------
-    // Meta
-    // ------------------------------------------------------------
-    root["meta"] = {
+    json meta = {
         {"generator", "ufbx"},
         {"source", path},
         {"version", 1},
         {"unit_scale", 1.0}
     };
+
+    mesh_root["meta"]      = meta;
+    skin_root["meta"]      = meta;
+    skeleton_root["meta"]  = meta;
+    animation_root["meta"] = meta;
 
     // ------------------------------------------------------------
     // Skeleton
@@ -104,76 +88,125 @@ int main(int argc, char **argv)
             }
         }
 
-        // Inverse bind will be filled later from skin clusters if available
-        ufbx_matrix inv_bind = ufbx_identity_matrix;
-
         bones.push_back({
             {"index", bone_index},
             {"name", std::string(node->name.data)},
             {"parent", parent},
-            {"inverse_bind", flatten_mat4(inv_bind)} // identity for now
+            {"inverse_bind", flatten_mat4(ufbx_identity_matrix)}
         });
 
         bone_index++;
     }
 
-    root["skeleton"] = {
-        {"bones", bones}
-    };
+    skeleton_root["bones"] = bones;
 
     // ------------------------------------------------------------
-    // Mesh + Skinning (first mesh only)
+    // Mesh + Skinning (INDEX-BASED, ufbx-correct)
     // ------------------------------------------------------------
     if (scene->meshes.count > 0) {
         ufbx_mesh *mesh = scene->meshes.data[0];
 
-        json joints = json::array();
-        json weights = json::array();
+        json vertices = json::array();
+        json indices  = json::array();
+        json joints   = json::array();
+        json weights  = json::array();
+
+        std::vector<std::array<int,4>> vertex_joints(mesh->num_vertices, {0,0,0,0});
+        std::vector<std::array<float,4>> vertex_weights(mesh->num_vertices, {0,0,0,0});
 
         if (mesh->skin_deformers.count > 0) {
             ufbx_skin_deformer *skin = mesh->skin_deformers.data[0];
 
-            for (size_t v = 0; v < mesh->num_vertices; v++) {
-                std::array<int, 4> j = {0, 0, 0, 0};
-                std::array<float, 4> w = {0.f, 0.f, 0.f, 0.f};
+            for (size_t c = 0; c < skin->clusters.count; c++) {
+                ufbx_skin_cluster *cluster = skin->clusters.data[c];
 
-                int count = 0;
+                int bone = 0;
+                int eid = cluster->bone_node->element_id;
+                if (eid >= 0 && eid < (int)node_to_bone.size()) {
+                    bone = node_to_bone[eid];
+                }
 
-                for (size_t c = 0; c < skin->clusters.count && count < 4; c++) {
-                    ufbx_skin_cluster *cluster = skin->clusters.data[c];
-                    int bone = -1;
-                    int eid = cluster->bone_node->element_id;
-                    if (eid >= 0 && eid < (int)node_to_bone.size()) {
-                        bone = node_to_bone[eid];
-                    }
+                for (size_t wi = 0; wi < cluster->weights.count; wi++) {
+                    uint32_t v = cluster->vertices.data[wi];
+                    float w = (float)cluster->weights.data[wi];
 
-                    for (size_t wi = 0; wi < cluster->weights.count && count < 4; wi++) {
-                        uint32_t vert = cluster->vertices.data[wi];
-                        if ((size_t)vert == v) {
-                            j[count] = bone >= 0 ? bone : 0;
-                            w[count] = (float)cluster->weights.data[wi];
-                            count++;
+                    auto &vj = vertex_joints[v];
+                    auto &vw = vertex_weights[v];
+
+                    for (int k = 0; k < 4; k++) {
+                        if (vw[k] == 0.0f) {
+                            vj[k] = bone;
+                            vw[k] = w;
+                            break;
                         }
                     }
                 }
+            }
 
-                float sum = w[0] + w[1] + w[2] + w[3];
+            for (size_t v = 0; v < mesh->num_vertices; v++) {
+                float sum = 0.0f;
+                for (int k = 0; k < 4; k++) sum += vertex_weights[v][k];
                 if (sum > 0.0f) {
-                    for (int k = 0; k < 4; k++) w[k] /= sum;
+                    for (int k = 0; k < 4; k++) vertex_weights[v][k] /= sum;
                 }
-
-                joints.push_back({j[0], j[1], j[2], j[3]});
-                weights.push_back({w[0], w[1], w[2], w[3]});
             }
         }
 
-        root["mesh"] = {
-            {"vertex_count", (int)mesh->num_vertices},
+        for (size_t i = 0; i < mesh->num_indices; i++) {
+
+            // index -> logical vertex
+            uint32_t vi = mesh->vertex_indices.data[i];
+
+            // vertex attributes are INDEXED, not vertex-based
+            ufbx_vec3 pos = mesh->vertex_position.values.data[
+                mesh->vertex_position.indices.data[i]
+            ];
+
+            ufbx_vec3 nor = mesh->vertex_normal.exists
+                ? mesh->vertex_normal.values.data[
+                    mesh->vertex_normal.indices.data[i]
+                  ]
+                : ufbx_vec3{0,0,1};
+
+            ufbx_vec2 uv = mesh->vertex_uv.exists
+                ? mesh->vertex_uv.values.data[
+                    mesh->vertex_uv.indices.data[i]
+                  ]
+                : ufbx_vec2{0,0};
+
+            vertices.push_back(pos.x);
+            vertices.push_back(pos.y);
+            vertices.push_back(pos.z);
+
+            vertices.push_back(nor.x);
+            vertices.push_back(nor.y);
+            vertices.push_back(nor.z);
+
+            vertices.push_back(uv.x);
+            vertices.push_back(uv.y);
+
+            auto &j = vertex_joints[vi];
+            auto &w = vertex_weights[vi];
+
+            joints.push_back({j[0], j[1], j[2], j[3]});
+            weights.push_back({w[0], w[1], w[2], w[3]});
+
+            indices.push_back((int)i);
+        }
+
+        mesh_root["mesh"] = {
+            {"vertex_count", (int)mesh->num_indices},
+            {"vertices", vertices},
+            {"indices", indices}
+        };
+
+        skin_root["skin"] = {
+            {"vertex_count", (int)mesh->num_indices},
             {"joints", joints},
             {"weights", weights}
         };
     }
-    
+
     // ------------------------------------------------------------
     // Animations (baked)
     // ------------------------------------------------------------
@@ -183,12 +216,11 @@ int main(int argc, char **argv)
         ufbx_error err;
         ufbx_bake_opts opts = {};
         opts.trim_start_time = true;
-        opts.resample_rate = 30.0; // export @ 30 fps
+        opts.resample_rate = 30.0;
 
         for (size_t a = 0; a < scene->anim_stacks.count; a++) {
             ufbx_anim_stack *stack = scene->anim_stacks.data[a];
 
-            // bake the animation
             ufbx_baked_anim *baked = ufbx_bake_anim(scene, stack->anim, &opts, &err);
             if (!baked) continue;
 
@@ -200,9 +232,7 @@ int main(int argc, char **argv)
             for (size_t i = 0; i < baked->nodes.count; i++) {
                 ufbx_baked_node &bn = baked->nodes.data[i];
 
-                // Resolve node from baked node element_id (ufbx >= 0.14)
                 if (bn.element_id >= scene->elements.count) continue;
-
                 ufbx_element *elem = scene->elements.data[bn.element_id];
                 if (!elem || elem->type != UFBX_ELEMENT_NODE) continue;
 
@@ -214,12 +244,10 @@ int main(int argc, char **argv)
                     bone = node_to_bone[eid];
                 }
                 if (bone < 0) continue;
-                if (bone >= (int)bones.size()) continue;
 
                 json channel;
                 channel["bone"] = bone;
 
-                // translation
                 if (bn.translation_keys.count > 0) {
                     json t;
                     json times = json::array();
@@ -234,7 +262,6 @@ int main(int argc, char **argv)
                     channel["translation"] = t;
                 }
 
-                // rotation
                 if (bn.rotation_keys.count > 0) {
                     json r;
                     json times = json::array();
@@ -249,7 +276,6 @@ int main(int argc, char **argv)
                     channel["rotation"] = r;
                 }
 
-                // scale
                 if (bn.scale_keys.count > 0) {
                     json s;
                     json times = json::array();
@@ -278,13 +304,28 @@ int main(int argc, char **argv)
             ufbx_free_anim((ufbx_anim*)baked);
         }
 
-        root["animations"] = animations;
+        animation_root["animations"] = animations;
     }
 
-    // ------------------------------------------------------------
-    // Output
-    // ------------------------------------------------------------
-    printf("%s\n", root.dump(2).c_str());
+    auto write_json = [](const std::string &p, const json &j) {
+        FILE *f = fopen(p.c_str(), "w");
+        if (f) {
+            fprintf(f, "%s\n", j.dump(2).c_str());
+            fclose(f);
+        }
+    };
+
+    write_json(mesh_path, mesh_root);
+    write_json(skin_path, skin_root);
+    write_json(skeleton_path, skeleton_root);
+    write_json(animation_path, animation_root);
+
+    printf("Wrote:\n  %s\n  %s\n  %s\n  %s\n",
+        mesh_path.c_str(),
+        skin_path.c_str(),
+        skeleton_path.c_str(),
+        animation_path.c_str()
+    );
 
     ufbx_free_scene(scene);
     return 0;
