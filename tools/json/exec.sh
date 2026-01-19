@@ -5,17 +5,17 @@ set -e
 # Paths
 SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
 UFBX_DIR="$SRC_DIR/../ufbx"
-OUT_BIN="$SRC_DIR/fbx_to_json"
+OUT_BIN="$SRC_DIR/fbx_loader"
 
 # Compile (always)
-echo "Compiling fbx_to_json..."
-clang++ "$SRC_DIR/fbx_to_json.cpp" "$UFBX_DIR/ufbx.c" \
+echo "Compiling fbx_loader..."
+clang++ "$SRC_DIR/fbx_loader.cpp" "$UFBX_DIR/ufbx.c" \
   -std=c++17 -O2 -I"$UFBX_DIR" -o "$OUT_BIN"
 
 echo "Build finished."
 
 # Ask before execution
-read -p "Execute fbx_to_json now? [y/n] " answer
+read -p "Execute fbx_loader now? [y/n] " answer
 
 case "$answer" in
   y|Y)
@@ -34,7 +34,7 @@ case "$answer" in
       exit 1
     fi
 
-    echo "Running fbx_to_json..."
+    echo "Running fbx_loader..."
     "$OUT_BIN" "$IN_FBX" > "$OUT_JSON"
 
     echo "Written: $OUT_JSON"
