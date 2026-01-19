@@ -9,11 +9,12 @@ from gameobjects.collider.aabb import AABBCollider
 from gameobjects.material_lookup import Material
 from gameobjects.material_lookup import MaterialRegistry
 
+
 class World:
     def __init__(self, level_path: str | None = None):
         """
         Docstring für __init__
-        
+
         :param self: The object itself
         """
         self.objects: list[GameObject] = []
@@ -22,7 +23,7 @@ class World:
         self.sun: GameObject | None = None
         if level_path:
             self.load_level(level_path)
-            
+
     def _create_object(self, data: dict):
         """
         Docstring für _create_object
@@ -31,7 +32,7 @@ class World:
         :param data: dict with object parameters
         :type data: dict
         """
-         # ---------- transform ----------
+        # ---------- transform ----------
         position = data.get("position", [0, 0, 0])
         scale = data.get("scale", [1, 1, 1])
         transform = Transform(position=position, scale=scale)
@@ -58,8 +59,10 @@ class World:
                     color=base_material.color,
                     texture=base_material.texture,
                     emissive=base_material.emissive,
-                    texture_scale_mode=material_data.get("texture_scale_mode", "default"),
-                    texture_scale_value=material_data.get("texture_scale_value")
+                    texture_scale_mode=material_data.get(
+                        "texture_scale_mode", "default"
+                    ),
+                    texture_scale_value=material_data.get("texture_scale_value"),
                 )
 
         # ---------- collider ----------
@@ -76,7 +79,7 @@ class World:
             transform=transform,
             material=material,
             collider=collider,
-            light=light
+            light=light,
         )
 
         self.objects.append(obj)
@@ -93,7 +96,7 @@ class World:
     def load_level(self, level_path: str):
         """
         Docstring für load_level
-        
+
         :param self: The object itself
         :param level_path: Path to the level file
         :type level_path: str

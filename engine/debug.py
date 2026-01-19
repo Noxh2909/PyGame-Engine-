@@ -2,23 +2,54 @@ import pygame
 import numpy as np
 import ctypes
 from OpenGL.GL import (
-    glUseProgram, glGetUniformLocation, glUniform2f,
-    glGenVertexArrays, glGenBuffers, glBindVertexArray,
-    glBindBuffer, glBufferData, glEnableVertexAttribArray,
-    glVertexAttribPointer, glCreateShader, glShaderSource,
-    glCompileShader, glGetShaderiv, glGetShaderInfoLog,
-    glCreateProgram, glAttachShader, glLinkProgram,
-    glGetProgramiv, glGetProgramInfoLog, glBindTexture,
-    glGenTextures, glTexParameteri, glTexImage2D, glActiveTexture,
+    glUseProgram,
+    glGetUniformLocation,
+    glUniform2f,
+    glGenVertexArrays,
+    glGenBuffers,
+    glBindVertexArray,
+    glBindBuffer,
+    glBufferData,
+    glEnableVertexAttribArray,
+    glVertexAttribPointer,
+    glCreateShader,
+    glShaderSource,
+    glCompileShader,
+    glGetShaderiv,
+    glGetShaderInfoLog,
+    glCreateProgram,
+    glAttachShader,
+    glLinkProgram,
+    glGetProgramiv,
+    glGetProgramInfoLog,
+    glBindTexture,
+    glGenTextures,
+    glTexParameteri,
+    glTexImage2D,
+    glActiveTexture,
     glDrawArrays,
-    glEnable, glDisable, glBlendFunc,
-    GL_ARRAY_BUFFER, GL_STATIC_DRAW, GL_FLOAT, GL_FALSE,
-    GL_VERTEX_SHADER, GL_FRAGMENT_SHADER,
-    GL_COMPILE_STATUS, GL_LINK_STATUS,
-    GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_TEXTURE_MAG_FILTER,
-    GL_LINEAR, GL_RGBA, GL_UNSIGNED_BYTE,
-    GL_TRIANGLES, GL_TEXTURE0,
-    GL_BLEND, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
+    glEnable,
+    glDisable,
+    glBlendFunc,
+    GL_ARRAY_BUFFER,
+    GL_STATIC_DRAW,
+    GL_FLOAT,
+    GL_FALSE,
+    GL_VERTEX_SHADER,
+    GL_FRAGMENT_SHADER,
+    GL_COMPILE_STATUS,
+    GL_LINK_STATUS,
+    GL_TEXTURE_2D,
+    GL_TEXTURE_MIN_FILTER,
+    GL_TEXTURE_MAG_FILTER,
+    GL_LINEAR,
+    GL_RGBA,
+    GL_UNSIGNED_BYTE,
+    GL_TRIANGLES,
+    GL_TEXTURE0,
+    GL_BLEND,
+    GL_SRC_ALPHA,
+    GL_ONE_MINUS_SRC_ALPHA,
 )
 
 VERT_SRC = """
@@ -48,6 +79,7 @@ void main() {
 }
 """
 
+
 class DebugHUD:
     def __init__(self, viewport_size):
         """
@@ -64,18 +96,39 @@ class DebugHUD:
         # shader
         self.prog = self._make_program(VERT_SRC, FRAG_SRC)
         self.u_offset = glGetUniformLocation(self.prog, "u_offset")
-        self.u_scale  = glGetUniformLocation(self.prog, "u_scale")
-        self.u_view   = glGetUniformLocation(self.prog, "u_view")
+        self.u_scale = glGetUniformLocation(self.prog, "u_scale")
+        self.u_view = glGetUniformLocation(self.prog, "u_view")
 
         # quad (two triangles)
-        verts = np.array([
-            0, 0, 0, 1,
-            1, 0, 1, 1,
-            1, 1, 1, 0,
-            0, 0, 0, 1,
-            1, 1, 1, 0,
-            0, 1, 0, 0,
-        ], dtype=np.float32)
+        verts = np.array(
+            [
+                0,
+                0,
+                0,
+                1,
+                1,
+                0,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                1,
+                0,
+                0,
+            ],
+            dtype=np.float32,
+        )
 
         self.vao = glGenVertexArrays(1)
         vbo = glGenBuffers(1)
@@ -99,6 +152,7 @@ class DebugHUD:
         :param vs: The vertex shader source
         :param fs: The fragment shader source
         """
+
         def sh(src, t):
             s = glCreateShader(t)
             glShaderSource(s, src)
@@ -106,6 +160,7 @@ class DebugHUD:
             if not glGetShaderiv(s, GL_COMPILE_STATUS):
                 raise RuntimeError(glGetShaderInfoLog(s))
             return s
+
         p = glCreateProgram()
         glAttachShader(p, sh(vs, GL_VERTEX_SHADER))
         glAttachShader(p, sh(fs, GL_FRAGMENT_SHADER))
@@ -126,9 +181,15 @@ class DebugHUD:
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
         glTexImage2D(
-            GL_TEXTURE_2D, 0, GL_RGBA,
-            surf.get_width(), surf.get_height(),
-            0, GL_RGBA, GL_UNSIGNED_BYTE, data
+            GL_TEXTURE_2D,
+            0,
+            GL_RGBA,
+            surf.get_width(),
+            surf.get_height(),
+            0,
+            GL_RGBA,
+            GL_UNSIGNED_BYTE,
+            data,
         )
         return surf.get_width(), surf.get_height()
 

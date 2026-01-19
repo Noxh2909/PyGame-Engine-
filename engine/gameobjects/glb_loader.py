@@ -148,18 +148,22 @@ class GLBLoader:
 
                 for sampler in anim.samplers:
                     times, values = self._read_animation_sampler(sampler)
-                    anim_data["samplers"].append({
-                        "times": times,
-                        "values": values,
-                        "interpolation": sampler.interpolation or "LINEAR",
-                    })
+                    anim_data["samplers"].append(
+                        {
+                            "times": times,
+                            "values": values,
+                            "interpolation": sampler.interpolation or "LINEAR",
+                        }
+                    )
 
                 for ch in anim.channels:
-                    anim_data["channels"].append({
-                        "sampler": ch.sampler,
-                        "node": ch.target.node,
-                        "path": ch.target.path,
-                    })
+                    anim_data["channels"].append(
+                        {
+                            "sampler": ch.sampler,
+                            "node": ch.target.node,
+                            "path": ch.target.path,
+                        }
+                    )
 
                 animations.append(anim_data)
 

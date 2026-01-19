@@ -2,6 +2,7 @@ import numpy as np
 
 EDGE_EPS = 0.1  # Ground edge tolerance (0.05–0.15 works well)
 
+
 class PhysicsWorld:
     """
     Minimal physics world for a kinematic player and static objects.
@@ -60,24 +61,40 @@ class PhysicsWorld:
             # X axis resolution
             # -------------------------
             if (
-                min_v[1] <= player.position[1] <= max_v[1] + player.height and
-                min_v[2] - player.radius <= player.position[2] <= max_v[2] + player.radius
+                min_v[1] <= player.position[1] <= max_v[1] + player.height
+                and min_v[2] - player.radius
+                <= player.position[2]
+                <= max_v[2] + player.radius
             ):
-                if player.position[0] > max_v[0] and player.position[0] - player.radius < max_v[0]:
+                if (
+                    player.position[0] > max_v[0]
+                    and player.position[0] - player.radius < max_v[0]
+                ):
                     player.position[0] = max_v[0] + player.radius
-                elif player.position[0] < min_v[0] and player.position[0] + player.radius > min_v[0]:
+                elif (
+                    player.position[0] < min_v[0]
+                    and player.position[0] + player.radius > min_v[0]
+                ):
                     player.position[0] = min_v[0] - player.radius
 
             # -------------------------
             # Z axis resolution
             # -------------------------
             if (
-                min_v[1] <= player.position[1] <= max_v[1] + player.stand_height and
-                min_v[0] - player.radius <= player.position[0] <= max_v[0] + player.radius
+                min_v[1] <= player.position[1] <= max_v[1] + player.stand_height
+                and min_v[0] - player.radius
+                <= player.position[0]
+                <= max_v[0] + player.radius
             ):
-                if player.position[2] > max_v[2] and player.position[2] - player.radius < max_v[2]:
+                if (
+                    player.position[2] > max_v[2]
+                    and player.position[2] - player.radius < max_v[2]
+                ):
                     player.position[2] = max_v[2] + player.radius
-                elif player.position[2] < min_v[2] and player.position[2] + player.radius > min_v[2]:
+                elif (
+                    player.position[2] < min_v[2]
+                    and player.position[2] + player.radius > min_v[2]
+                ):
                     player.position[2] = min_v[2] - player.radius
 
             # -------------------------
@@ -90,11 +107,15 @@ class PhysicsWorld:
             is_crossing_down = player.position[1] <= ground_y
 
             if (
-                was_above and
-                is_crossing_down and
-                player.velocity_y <= 0.0 and
-                min_v[0] - player.radius + EDGE_EPS <= player.position[0] <= max_v[0] + player.radius - EDGE_EPS and
-                min_v[2] - player.radius + EDGE_EPS <= player.position[2] <= max_v[2] + player.radius - EDGE_EPS
+                was_above
+                and is_crossing_down
+                and player.velocity_y <= 0.0
+                and min_v[0] - player.radius + EDGE_EPS
+                <= player.position[0]
+                <= max_v[0] + player.radius - EDGE_EPS
+                and min_v[2] - player.radius + EDGE_EPS
+                <= player.position[2]
+                <= max_v[2] + player.radius - EDGE_EPS
             ):
                 player.position[1] = ground_y
                 player.velocity_y = 0.0

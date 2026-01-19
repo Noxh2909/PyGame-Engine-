@@ -1,5 +1,6 @@
 import pygame
 
+
 class InputState:
     """
     Collects and normalizes raw input into logical actions.
@@ -23,13 +24,11 @@ class InputState:
             "left": False,
             "right": False,
             "sprint": False,
-
             # crouch
-            "crouch_hold": False,   # HOLD -> normal crouch
-            "crouch_tap": False,    # TAP  -> slide
-
+            "crouch_hold": False,  # HOLD -> normal crouch
+            "crouch_tap": False,  # TAP  -> slide
             "jump": False,
-            "toggle_third_person": False
+            "toggle_third_person": False,
         }
 
         # previous key states for edge detection
@@ -64,9 +63,11 @@ class InputState:
         jump_now = keys[pygame.K_SPACE]
         self.actions["jump"] = jump_now and not self._prev_jump
         self._prev_jump = jump_now
-        
+
         toggle_now = keys[pygame.K_v]
-        self.actions["toggle_third_person"] = toggle_now and not self._prev_toggle_third_person
+        self.actions["toggle_third_person"] = (
+            toggle_now and not self._prev_toggle_third_person
+        )
         self._prev_toggle_third_person = toggle_now
 
         return self.actions

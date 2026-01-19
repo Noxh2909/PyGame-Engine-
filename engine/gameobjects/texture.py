@@ -1,10 +1,17 @@
 import pygame
 from OpenGL.GL import (
-    glGenTextures, glBindTexture, glTexImage2D,
-    glTexParameteri, glGenerateMipmap,
-    GL_TEXTURE_2D, GL_RGBA, GL_UNSIGNED_BYTE,
-    GL_TEXTURE_MIN_FILTER, GL_TEXTURE_MAG_FILTER,
-    GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR
+    glGenTextures,
+    glBindTexture,
+    glTexImage2D,
+    glTexParameteri,
+    glGenerateMipmap,
+    GL_TEXTURE_2D,
+    GL_RGBA,
+    GL_UNSIGNED_BYTE,
+    GL_TEXTURE_MIN_FILTER,
+    GL_TEXTURE_MAG_FILTER,
+    GL_LINEAR,
+    GL_LINEAR_MIPMAP_LINEAR,
 )
 
 
@@ -34,7 +41,7 @@ def load_texture(path: str) -> int:
         0,
         GL_RGBA,
         GL_UNSIGNED_BYTE,
-        image_data
+        image_data,
     )
 
     # Texture filtering

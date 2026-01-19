@@ -1,13 +1,25 @@
 import numpy as np
 import ctypes
 from OpenGL.GL import (
-    glGenVertexArrays, glGenBuffers, glBindVertexArray,
-    glBindBuffer, glBufferData, glEnableVertexAttribArray,
-    glVertexAttribPointer, glDrawArrays, glDrawElements,
-    GL_ARRAY_BUFFER, GL_STATIC_DRAW, GL_ELEMENT_ARRAY_BUFFER,
-    GL_FLOAT, GL_FALSE, GL_TRIANGLES, GL_UNSIGNED_INT
+    glGenVertexArrays,
+    glGenBuffers,
+    glBindVertexArray,
+    glBindBuffer,
+    glBufferData,
+    glEnableVertexAttribArray,
+    glVertexAttribPointer,
+    glDrawArrays,
+    glDrawElements,
+    GL_ARRAY_BUFFER,
+    GL_STATIC_DRAW,
+    GL_ELEMENT_ARRAY_BUFFER,
+    GL_FLOAT,
+    GL_FALSE,
+    GL_TRIANGLES,
+    GL_UNSIGNED_INT,
 )
 from gameobjects.vertec import cube_vertices, sphere_vertices
+
 
 class Mesh:
     def __init__(self, vertices: np.ndarray, indices: np.ndarray | None = None):
@@ -62,11 +74,13 @@ class Mesh:
         else:
             glDrawArrays(GL_TRIANGLES, 0, self.vertex_count)
         glBindVertexArray(0)
-        
+
+
 class MeshRegistry:
     """
     Docstring für MeshRegistry
     """
+
     _meshes: dict[str, Mesh] = {}
 
     @classmethod

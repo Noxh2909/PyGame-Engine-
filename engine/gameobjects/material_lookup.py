@@ -1,8 +1,8 @@
 from gameobjects.texture import load_texture
 import os
 
-ENGINE_DIR = os.path.dirname(os.path.dirname(__file__))   # .../pygame/engine
-PROJECT_ROOT = os.path.dirname(ENGINE_DIR)                # .../pygame
+ENGINE_DIR = os.path.dirname(os.path.dirname(__file__))  # .../pygame/engine
+PROJECT_ROOT = os.path.dirname(ENGINE_DIR)  # .../pygame
 
 texture_dir = os.path.join(PROJECT_ROOT, "assets", "textures")
 
@@ -10,19 +10,39 @@ if not os.path.isdir(texture_dir):
     raise RuntimeError(f"Texture directory not found: {texture_dir}")
 
 MATERIAL_TABLE = {
-    "white": lambda: Material(color=(1,1,1)),
-    "wood": lambda: Material(texture=load_texture(os.path.join(texture_dir, "wood_wall.jpg"))),
-    "marble": lambda: Material(texture=load_texture(os.path.join(texture_dir, "marble_floor.jpg"))),
-    "ocean": lambda: Material(texture=load_texture(os.path.join(texture_dir, "ocean.jpg"))),
-    "destiny": lambda: Material(texture=load_texture(os.path.join(texture_dir, "destiny2.jpeg"))),
-    "yasu": lambda: Material(texture=load_texture(os.path.join(texture_dir, "yasu.jpeg"))),
-    "js": lambda: Material(texture=load_texture(os.path.join(texture_dir, "js.jpeg" ))),
-    "elian": lambda: Material(texture=load_texture(os.path.join(texture_dir, "elian.jpeg" ))),
-    "sun": lambda: Material(color=(1,1,1), emissive=True),
+    "white": lambda: Material(color=(1, 1, 1)),
+    "wood": lambda: Material(
+        texture=load_texture(os.path.join(texture_dir, "wood_wall.jpg"))
+    ),
+    "marble": lambda: Material(
+        texture=load_texture(os.path.join(texture_dir, "marble_floor.jpg"))
+    ),
+    "ocean": lambda: Material(
+        texture=load_texture(os.path.join(texture_dir, "ocean.jpg"))
+    ),
+    "destiny": lambda: Material(
+        texture=load_texture(os.path.join(texture_dir, "destiny2.jpeg"))
+    ),
+    "yasu": lambda: Material(
+        texture=load_texture(os.path.join(texture_dir, "yasu.jpeg"))
+    ),
+    "js": lambda: Material(texture=load_texture(os.path.join(texture_dir, "js.jpeg"))),
+    "elian": lambda: Material(
+        texture=load_texture(os.path.join(texture_dir, "elian.jpeg"))
+    ),
+    "sun": lambda: Material(color=(1, 1, 1), emissive=True),
 }
 
+
 class Material:
-    def __init__(self, color=(1.0, 1.0, 1.0), texture=None, emissive=False, texture_scale_mode=None, texture_scale_value=None):
+    def __init__(
+        self,
+        color=(1.0, 1.0, 1.0),
+        texture=None,
+        emissive=False,
+        texture_scale_mode=None,
+        texture_scale_value=None,
+    ):
         """
         color         : fallback color (vec3)
         texture       : OpenGL texture id or None
@@ -36,6 +56,7 @@ class Material:
         self.texture_scale_mode = texture_scale_mode
         self.texture_scale_value = texture_scale_value
 
+
 class MaterialRegistry:
     _materials: dict[str, Material] = {}
 
@@ -44,7 +65,7 @@ class MaterialRegistry:
         if name not in cls._materials:
             cls._materials[name] = cls._load(name)
         return cls._materials[name]
-    
+
     @staticmethod
     def _load(name: str) -> Material:
         if name in MATERIAL_TABLE:

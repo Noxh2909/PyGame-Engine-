@@ -9,15 +9,15 @@ class Camera:
         self.player = player
         self.physics_world = physics_world
         self.fov = fov
-        
+
         # First-person settings
         self.fps_forward_offset = 0.40
         self.fps_eye_vertical_bias = 0.10
 
-        # Third-person settings        
+        # Third-person settings
         self.third_person = False
-        self.distance = 4.0      
-        self.height_offset = 1.2 
+        self.distance = 4.0
+        self.height_offset = 1.2
         self.collision_padding = 0.5  # distance kept from walls
 
     def get_view_matrix(self) -> np.ndarray:
@@ -25,18 +25,14 @@ class Camera:
             # -------- First Person --------
             eye = self.player.position.copy()
             eye[1] += self.player.height + self.player._headbob_offset
-            
+
             # postion eye slightly higher then head
             eye[1] += self.fps_eye_vertical_bias
 
             # offset prevents clipping through mannequin head
             eye += self.player.front * self.fps_forward_offset
 
-            return look_at(
-                eye,
-                eye + self.player.front,
-                self.player.up
-            )
+            return look_at(eye, eye + self.player.front, self.player.up)
 
         else:
             # -------- Third Person (collision aware) --------
@@ -61,11 +57,7 @@ class Camera:
             else:
                 eye = desired_eye
 
-            return look_at(
-                eye,
-                target,
-                self.player.up
-            )
+            return look_at(eye, target, self.player.up)
 
     def get_projection_matrix(self, aspect: float, near=0.1, far=100.0) -> np.ndarray:
         f = 1.0 / math.tan(math.radians(self.fov) / 2.0)

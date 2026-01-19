@@ -52,9 +52,7 @@ class CapsuleCollider:
         """
         r = self.radius
         min_v = position + np.array([-r, 0.0, -r], dtype=np.float32)
-        max_v = position + np.array(
-            [r, self.height, r], dtype=np.float32
-        )
+        max_v = position + np.array([r, self.height, r], dtype=np.float32)
         return min_v, max_v
 
     # --------------------------------------------------
@@ -71,15 +69,13 @@ class CapsuleCollider:
 
         # clamp aabb center to capsule segment
         closest = self._closest_point_on_segment(
-            bottom, top,
-            np.maximum(aabb_min, np.minimum((aabb_min + aabb_max) * 0.5, aabb_max))
+            bottom,
+            top,
+            np.maximum(aabb_min, np.minimum((aabb_min + aabb_max) * 0.5, aabb_max)),
         )
 
         # distance from closest point to AABB
-        closest_aabb = np.maximum(
-            aabb_min,
-            np.minimum(closest, aabb_max)
-        )
+        closest_aabb = np.maximum(aabb_min, np.minimum(closest, aabb_max))
 
         delta = closest - closest_aabb
         return np.dot(delta, delta) <= self.radius * self.radius

@@ -1,9 +1,14 @@
 import pygame
 from OpenGL.GL import (
-    glClear, glClearColor,
-    GL_COLOR_BUFFER_BIT, GL_DEPTH_BUFFER_BIT,
-    glViewport, glGetString, GL_VERSION,
-    glEnable, GL_DEPTH_TEST
+    glClear,
+    glClearColor,
+    GL_COLOR_BUFFER_BIT,
+    GL_DEPTH_BUFFER_BIT,
+    glViewport,
+    glGetString,
+    GL_VERSION,
+    glEnable,
+    GL_DEPTH_TEST,
 )
 
 from gameobjects.material_lookup import Material
@@ -37,8 +42,7 @@ pygame.display.set_caption("3D Engine")
 pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MAJOR_VERSION, 3)
 pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MINOR_VERSION, 3)
 pygame.display.gl_set_attribute(
-    pygame.GL_CONTEXT_PROFILE_MASK,
-    pygame.GL_CONTEXT_PROFILE_CORE
+    pygame.GL_CONTEXT_PROFILE_MASK, pygame.GL_CONTEXT_PROFILE_CORE
 )
 
 width, height = 1400, 800
@@ -47,7 +51,7 @@ glViewport(0, 0, width, height)
 
 pygame.mouse.set_visible(False)
 pygame.event.set_grab(True)
-pygame.mouse.get_rel()  
+pygame.mouse.get_rel()
 
 version = glGetString(GL_VERSION)
 if version:
@@ -107,10 +111,10 @@ static_mannequin.material = mannequin_material
 # --------------------
 
 ground_plane = GameObject(
-    mesh=None,              # no rendering mesh
-    material=None,          # no material
+    mesh=None,  # no rendering mesh
+    material=None,  # no material
     transform=Transform(position=(0, 0, 0), scale=(100000, 0.0, 100000)),
-    collider=AABBCollider(size=(1000, 0.0, 1000))
+    collider=AABBCollider(size=(1000, 0.0, 1000)),
 )
 
 physics.add_static(ground_plane)
@@ -120,10 +124,10 @@ if sun is not None and sun.light is not None:
     renderer.set_light(
         position=sun.transform.position,
         color=sun.light.get("color"),
-        intensity=sun.light.get("intensity")
+        intensity=sun.light.get("intensity"),
     )
 
-# --------------------  
+# --------------------
 # Visual cube ONLY
 # --------------------
 
@@ -133,7 +137,7 @@ for obj in world.objects:
 
 clock = pygame.time.Clock()
 running = True
-first_person = True 
+first_person = True
 camera.third_person = False
 
 while running:
@@ -147,7 +151,7 @@ while running:
     player.process_mouse(mx, my)
 
     actions = input_state.update()
-    
+
     if actions["toggle_third_person"]:
         first_person = not first_person
         camera.third_person = not first_person
@@ -177,7 +181,7 @@ while running:
 
     # if not first_person and capsule_mesh is not None:
     #     mannequin.draw(renderer.object_program)
-    
+
     # if not first_person:
     renderer.draw_object(static_mannequin, camera, width / height)
 
