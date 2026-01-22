@@ -1,6 +1,12 @@
-from OpenGL import GL
-import numpy as np
 import ctypes
+import math
+import random
+from typing import Optional
+
+import pygame
+from pygame.locals import DOUBLEBUF, OPENGL
+import numpy as np
+from OpenGL import GL
 
 # =========================
 # Shader Utils
@@ -8,51 +14,67 @@ import ctypes
 
 
 def load_shader(path: str) -> str:
+    """
+    Docstring für load_shader
+    
+    :param path: Path to the shader file
+    :type path: str
+    :return: The source code of the shader as a string
+    :rtype: str
+    """
     with open(path, "r", encoding="utf-8") as f:
         return f.read()
 
 
-def compile_shader(src, shader_type):
-    """
-    Docstring für compile_shader
+def compile_shader(source: str, shader_type: int) -> int:
+    """Compile a GLSL shader from source and return the handle.
 
-    :param src: The shader source code
-    :param shader_type: The type of shader (vertex or fragment)
+    :param source: The shader source code as a single string.
+    :param shader_type: GL.GL_VERTEX_SHADER, GL.GL_FRAGMENT_SHADER or GL.GL_GEOMETRY_SHADER.
+    :raises RuntimeError: On compilation failure.
     """
     shader = GL.glCreateShader(shader_type)
-    GL.glShaderSource(shader, src)
+    if shader is None or shader == 0:
+        raise RuntimeError("Failed to create shader")
+    GL.glShaderSource(shader, source)
     GL.glCompileShader(shader)
-
+    # Check compile status and raise an error if compilation failed
     if not GL.glGetShaderiv(shader, GL.GL_COMPILE_STATUS):
-        error = GL.glGetShaderInfoLog(shader)
-        error = error.decode() if error else "<no shader log>"
-        raise RuntimeError(error)
-
+        info = GL.glGetShaderInfoLog(shader).decode()
+        raise RuntimeError(f"Shader compilation failed: {info}")
     return shader
 
 
-def create_program(vs_src, fs_src):
-    """
-    Docstring für create_program
+def link_program(vertex_src: str, fragment_src: str, geometry_src: Optional[str] = None) -> int:
+    """Link a GLSL program from supplied shader sources.
 
-    :param vs_src: The vertex shader source
-    :param fs_src: The fragment shader source
+    :param vertex_src: Vertex shader source code.
+    :param fragment_src: Fragment shader source code.
+    :param geometry_src: Optional geometry shader source code.
+    :return: OpenGL program handle.
+    :raises RuntimeError: On linking failure.
     """
-    vs = compile_shader(vs_src, GL.GL_VERTEX_SHADER)
-    fs = compile_shader(fs_src, GL.GL_FRAGMENT_SHADER)
-
     program = GL.glCreateProgram()
+    if program is None or program == 0:
+        raise RuntimeError("Failed to create program")
+    vs = compile_shader(vertex_src, GL.GL_VERTEX_SHADER)
+    fs = compile_shader(fragment_src, GL.GL_FRAGMENT_SHADER)
     GL.glAttachShader(program, vs)
     GL.glAttachShader(program, fs)
+    gs = None
+    if geometry_src:
+        gs = compile_shader(geometry_src, GL.GL_GEOMETRY_SHADER)
+        GL.glAttachShader(program, gs)
     GL.glLinkProgram(program)
-
+    # Check link status
     if not GL.glGetProgramiv(program, GL.GL_LINK_STATUS):
-        error = GL.glGetProgramInfoLog(program)
-        error = error.decode() if error else "<no program log>"
-        raise RuntimeError(error)
-
+        info = GL.glGetProgramInfoLog(program).decode()
+        raise RuntimeError(f"Program linking failed: {info}")
+    # Shaders can be deleted once linked
     GL.glDeleteShader(vs)
     GL.glDeleteShader(fs)
+    if gs:
+        GL.glDeleteShader(gs)
     return program
 
 
@@ -82,22 +104,22 @@ class Renderer:
         :param self: The object itself
         :param plane_size: The size of the ground plane
         """
-        self.grid_program = create_program(
+        self.grid_program = link_program(
             GRID_VERTEX_SHADER_SRC, GRID_FRAGMENT_SHADER_SRC
         )
-        self.object_program = create_program(
+        self.object_program = link_program(
             OBJECT_VERTEX_SHADER_SRC, OBJECT_FRAGMENT_SHADER_SRC
         )
 
-        self.normal_program = create_program(
+        self.normal_program = link_program(
             OBJECT_VERTEX_SHADER_SRC, NORMAL_FRAGMENT_SHADER_SRC
         )
 
         # SSAO programs
-        self.ssao_program = create_program(
+        self.ssao_program = link_program(
             SSAO_VERTEX_SHADER_SRC, SSAO_FRAGMENT_SHADER_SRC
         )
-        self.ssao_blur_program = create_program(
+        self.ssao_blur_program = link_program(
             SSAO_VERTEX_SHADER_SRC, SSAO_BLUR_FRAGMENT_SHADER_SRC
         )
 
