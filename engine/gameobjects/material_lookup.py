@@ -42,6 +42,7 @@ class Material:
         emissive=False,
         texture_scale_mode=None,
         texture_scale_value=None,
+        reflectivity=0.0,
     ):
         """
         color         : fallback color (vec3)
@@ -55,6 +56,7 @@ class Material:
         self.emissive = emissive
         self.texture_scale_mode = texture_scale_mode
         self.texture_scale_value = texture_scale_value
+        self.reflectivity = reflectivity
 
 
 class MaterialRegistry:

@@ -2,21 +2,21 @@ import ctypes
 import math
 import random
 from typing import Optional
-
-import pygame
-from pygame.locals import DOUBLEBUF, OPENGL
 import numpy as np
 from OpenGL import GL
+import pygame
+
+from gameobjects.player.player import look_at
+from gameobjects.player.camera import Camera
 
 # =========================
 # Shader Utils
 # =========================
 
-
 def load_shader(path: str) -> str:
     """
-    Docstring für load_shader
-    
+    Docstring for load_shader
+
     :param path: Path to the shader file
     :type path: str
     :return: The source code of the shader as a string
@@ -27,7 +27,8 @@ def load_shader(path: str) -> str:
 
 
 def compile_shader(source: str, shader_type: int) -> int:
-    """Compile a GLSL shader from source and return the handle.
+    """
+    ompile a GLSL shader from source and return the handle.
 
     :param source: The shader source code as a single string.
     :param shader_type: GL.GL_VERTEX_SHADER, GL.GL_FRAGMENT_SHADER or GL.GL_GEOMETRY_SHADER.
@@ -38,14 +39,14 @@ def compile_shader(source: str, shader_type: int) -> int:
         raise RuntimeError("Failed to create shader")
     GL.glShaderSource(shader, source)
     GL.glCompileShader(shader)
-    # Check compile status and raise an error if compilation failed
     if not GL.glGetShaderiv(shader, GL.GL_COMPILE_STATUS):
         info = GL.glGetShaderInfoLog(shader).decode()
         raise RuntimeError(f"Shader compilation failed: {info}")
     return shader
 
 
-def link_program(vertex_src: str, fragment_src: str, geometry_src: Optional[str] = None) -> int:
+def link_program(
+    vertex_src: str, fragment_src: str, geometry_src: Optional[str] = None) -> int:
     """Link a GLSL program from supplied shader sources.
 
     :param vertex_src: Vertex shader source code.
@@ -78,450 +79,971 @@ def link_program(vertex_src: str, fragment_src: str, geometry_src: Optional[str]
     return program
 
 
+def create_depth_map(size: int) -> tuple[int, int]: 
+    """Create a framebuffer object and depth texture for shadow mapping.
+
+    :param size: Resolution of the square depth map.
+    :return: Tuple (framebuffer handle, depth texture handle).
+    """
+    depth_texture = GL.glGenTextures(1)
+    GL.glBindTexture(GL.GL_TEXTURE_2D, depth_texture)
+    GL.glTexImage2D(
+        GL.GL_TEXTURE_2D, 0, GL.GL_DEPTH_COMPONENT, size, size, 0, GL.GL_DEPTH_COMPONENT, GL.GL_FLOAT, None
+    )
+    GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_NEAREST)
+    GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_NEAREST)
+    GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_S, GL.GL_CLAMP_TO_BORDER)
+    GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_T, GL.GL_CLAMP_TO_BORDER)
+    border_color = (1.0, 1.0, 1.0, 1.0)
+    GL.glTexParameterfv(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_BORDER_COLOR, border_color) 
+    depth_fbo = GL.glGenFramebuffers(1)
+    GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, depth_fbo)
+    GL.glFramebufferTexture2D(GL.GL_FRAMEBUFFER, GL.GL_DEPTH_ATTACHMENT, GL.GL_TEXTURE_2D, depth_texture, 0)
+    GL.glDrawBuffer(GL.GL_NONE)
+    GL.glReadBuffer(GL.GL_NONE)
+    if GL.glCheckFramebufferStatus(GL.GL_FRAMEBUFFER) != GL.GL_FRAMEBUFFER_COMPLETE:
+        raise RuntimeError("Depth framebuffer not complete")
+    GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
+    return depth_fbo, depth_texture
+
+
+def perspective(fovy: float, aspect: float, znear: float, zfar: float) -> np.ndarray: 
+    """
+    Docstring für perspective (helper function, alreay in camera.py)
+    
+    :param fovy: sets the field of view in the y direction
+    :type fovy: float
+    :param aspect: sets the aspect ratio of the viewport (width/height)
+    :type aspect: float
+    :param znear: sets the distance to the near clipping plane
+    :type znear: float
+    :param zfar: sets the distance to the far clipping plane
+    :type zfar: float
+    :return: a 4x4 perspective projection matrix
+    :rtype: ndarray[_AnyShape, dtype[Any]]
+    """
+    f = 1.0 / math.tan(fovy / 2.0)
+    mat = np.zeros((4, 4), dtype=np.float32)
+    mat[0, 0] = f / aspect
+    mat[1, 1] = f
+    mat[2, 2] = (zfar + znear) / (znear - zfar)
+    mat[2, 3] = (2.0 * zfar * znear) / (znear - zfar)
+    mat[3, 2] = -1.0
+    return mat
+
 # =========================
-# Shader Quellen
+# Shader Sources
 # =========================
 
-GRID_VERTEX_SHADER_SRC = load_shader("engine/rendering/shader/grid.vert")
-GRID_FRAGMENT_SHADER_SRC = load_shader("engine/rendering/shader/grid.frag")
-OBJECT_VERTEX_SHADER_SRC = load_shader("engine/rendering/shader/object.vert")
-OBJECT_FRAGMENT_SHADER_SRC = load_shader("engine/rendering/shader/object.frag")
-NORMAL_FRAGMENT_SHADER_SRC = load_shader("engine/rendering/shader/normal.frag")
+# Debug Shader for displaying FPS and camera position
+DEBUG_VERTEX_SHADER_SRC = load_shader("engine/rendering/shader/debug.vert")
+DEBUG_FRAGMENT_SHADER_SRC = load_shader("engine/rendering/shader/debug.frag")
+
+# Plane Shader
+PLANE_VERTEX_SHADER_SRC = load_shader("engine/rendering/shader/grid_plane.vert")
+PLANE_FRAGMENT_SHADER_SRC = load_shader("engine/rendering/shader/grid_plane.frag")
+
+# Depth Shader for shadow mapping
+DEPTH_VERTEX_SHADER_SRC = load_shader("engine/rendering/shader/depth.vert")
+DEPTH_FRAGMENT_SHADER_SRC = load_shader("engine/rendering/shader/depth.frag")
+
+# Geometry Pass Shader for SSAO
+GEOMETRY_VERTEX_SHADER_SRC = load_shader("engine/rendering/shader/geometry.vert")
+GEOMETRY_FRAGMENT_SHADER_SRC = load_shader("engine/rendering/shader/geometry.frag")
+
+# SSAO Shader
 SSAO_VERTEX_SHADER_SRC = load_shader("engine/rendering/shader/ssao.vert")
 SSAO_FRAGMENT_SHADER_SRC = load_shader("engine/rendering/shader/ssao.frag")
 SSAO_BLUR_FRAGMENT_SHADER_SRC = load_shader("engine/rendering/shader/ssao_blur.frag")
 
-# =========================
-# Renderer
-# =========================
+# Final Shader for rendering to screen
+FINAL_VERTEX_SHADER_SRC = load_shader("engine/rendering/shader/final.vert")
+FINAL_FRAGMENT_SHADER_SRC = load_shader("engine/rendering/shader/final.frag")
 
 
-class Renderer:
-    def __init__(self, plane_size=50.0):
+# =========================
+# Renderer Class
+# =========================
+
+class RenderObject:
+    def __init__(self, mesh, transform, material):
         """
-        Docstring für __init__
+        Enables the rendering of an object in the scene.
+        
+        :param self: the object itself
+        :param mesh: the mesh data
+        :param transform: the transformation matrix
+        :param material: the material properties
+        """
+        self.mesh = mesh
+        self.transform = transform
+        self.material = material
+        
+        
+class Renderer:
+    def __init__(self, plane_size=100.0, width=1400, height=800, light_pos=(0.0, 0.0, 0.0), light_color=(1.0, 1.0, 1.0)):
+        """
+        Initializes the Renderer object.
 
         :param self: The object itself
         :param plane_size: The size of the ground plane
         """
+        self.width = width
+        self.height = height
+        self.light_pos = np.array(light_pos, dtype=np.float32)
+        self.light_color = np.array(light_color, dtype=np.float32)
+        # Configure viewport and enable depth testing and face culling.
+        GL.glViewport(0, 0, self.width, self.height) 
+        GL.glEnable(GL.GL_DEPTH_TEST)
+        GL.glEnable(GL.GL_CULL_FACE)
+        GL.glCullFace(GL.GL_BACK)
+        GL.glFrontFace(GL.GL_CCW)
+        
+        # compile shaders
+        self.compile_shaders()
+        
+        # creates grid plane
+        self.grid_vao, self.grid_vertex_count = self.create_grid_plane(plane_size)
+        
+        # enable debug hud
+        self.init_debug_hud((self.width, self.height))
+        
+        # create frame buffers and textures
+        self.create_frame_buffers()
+        
+        # SSAO sampling kernel, upload noise texture
+        self.ssao_kernel = self.create_ssao_kernel(64)
+        self.ssao_noise = self.generate_ssao_noise()
+        self.ssao_noise_texture = self.create_noise_texture(self.ssao_noise)
+        
+        # cache frequently used uniform locations
+        self.cache_uniform_locations()
+        
+        # set up projection matrices
+        self.projection = perspective(math.radians(120.0), self.width / self.height, 0.1, 100.0)
+        
+        self.create_fullscreen_quad()
+        
+        # light projection matrix for shadow mapping
+        ortho_half_size = 10.0
+        near = 1.0
+        far = 5.0
+        self.light_projection = np.array(
+            [
+                [2.0 / (ortho_half_size * 2), 0.0, 0.0, 0.0],
+                [0.0, 2.0 / (ortho_half_size * 2), 0.0, 0.0],
+                [0.0, 0.0, -2.0 / (far - near), 0.0],
+                [0.0, 0.0, -(far + near) / (far - near), 1.0],
+            ],
+            dtype=np.float32,
+        )
+        
+        # model matrix for the grid plane
+        self.model = np.identity(4, dtype=np.float32)
+        
+        # precompute SSAO sample kernel 
+        GL.glUseProgram(self.ssao_program)
+        for i, sample in enumerate(self.ssao_kernel):
+            loc = GL.glGetUniformLocation(self.ssao_program, f"samples[{i}]")
+            GL.glUniform3fv(loc, 1, sample)
+        GL.glUniform1i(
+            GL.glGetUniformLocation(self.ssao_program, "kernelSize"),
+            len(self.ssao_kernel),
+        )
+        GL.glUniform1f(
+            GL.glGetUniformLocation(self.ssao_program, "radius"), 0.5
+        )
+        GL.glUniform1f(
+            GL.glGetUniformLocation(self.ssao_program, "bias"), 0.025
+        )
+        GL.glUniformMatrix4fv(
+            GL.glGetUniformLocation(self.ssao_program, "projection"),
+            1,
+            GL.GL_TRUE,
+            self.projection,
+        )
+        
+        
+    def compile_shaders(self):
+        """
+        Docstring für compile_shaders
+
+        :param self: The object itself
+        """
+        self.debug_program = link_program(
+            DEBUG_VERTEX_SHADER_SRC, DEBUG_FRAGMENT_SHADER_SRC
+        )
         self.grid_program = link_program(
-            GRID_VERTEX_SHADER_SRC, GRID_FRAGMENT_SHADER_SRC
+            PLANE_VERTEX_SHADER_SRC, PLANE_FRAGMENT_SHADER_SRC
+        )   
+        self.depth_program = link_program(
+            DEPTH_VERTEX_SHADER_SRC, DEPTH_FRAGMENT_SHADER_SRC
         )
-        self.object_program = link_program(
-            OBJECT_VERTEX_SHADER_SRC, OBJECT_FRAGMENT_SHADER_SRC
+        self.geometry_program = link_program(
+            GEOMETRY_VERTEX_SHADER_SRC, GEOMETRY_FRAGMENT_SHADER_SRC
         )
-
-        self.normal_program = link_program(
-            OBJECT_VERTEX_SHADER_SRC, NORMAL_FRAGMENT_SHADER_SRC
-        )
-
-        # SSAO programs
         self.ssao_program = link_program(
             SSAO_VERTEX_SHADER_SRC, SSAO_FRAGMENT_SHADER_SRC
         )
         self.ssao_blur_program = link_program(
             SSAO_VERTEX_SHADER_SRC, SSAO_BLUR_FRAGMENT_SHADER_SRC
         )
+        self.final_program = link_program(
+            FINAL_VERTEX_SHADER_SRC, FINAL_FRAGMENT_SHADER_SRC
+        )
 
-        # static ground plane
-        self._create_plane(plane_size)
+
+    def init_debug_hud(self, viewport_size):
+        """
+        Here we initialize the debug HUD for displaying FPS and camera position.
+        
+        :param self: The object itself
+        :param viewport_size: The size of the viewport as a tuple (width, height)
+        """
+        pygame.font.init()
+        self.debug_enabled = True
+        self.debug_font = pygame.font.SysFont("consolas", 16)
+        self.debug_vw, self.debug_vh = viewport_size
+        
+        GL.glUseProgram(self.debug_program)
+
+        self.debug_u_offset = GL.glGetUniformLocation(self.debug_program, "u_offset")
+        self.debug_u_scale  = GL.glGetUniformLocation(self.debug_program, "u_scale")
+        self.debug_u_view   = GL.glGetUniformLocation(self.debug_program, "u_view")
+
+        quad = np.array([
+            0, 0, 0, 1, # Triangle 1
+            1, 0, 1, 1, # Triangle 1
+            1, 1, 1, 0, # Triangle 1
+            0, 0, 0, 1, # Triangle 2
+            1, 1, 1, 0, # Triangle 2
+            0, 1, 0, 0, # Triangle 2
+        ], dtype=np.float32)
+
+        self.debug_vao = GL.glGenVertexArrays(1)
+        vbo = GL.glGenBuffers(1)
+
+        GL.glBindVertexArray(self.debug_vao)
+        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo)
+        GL.glBufferData(GL.GL_ARRAY_BUFFER, quad.nbytes, quad, GL.GL_STATIC_DRAW)
+
+        GL.glEnableVertexAttribArray(0)
+        GL.glVertexAttribPointer(0, 2, GL.GL_FLOAT, GL.GL_FALSE, 16, ctypes.c_void_p(0))
+        GL.glEnableVertexAttribArray(1)
+        GL.glVertexAttribPointer(1, 2, GL.GL_FLOAT, GL.GL_FALSE, 16, ctypes.c_void_p(8))
+
+        GL.glBindVertexArray(0)
+        self.debug_tex = GL.glGenTextures(1)
+        
+        
+    def render_debug_hud(self, clock, player):
+        """
+        Description for render_debug_hud which displays FPS and camera position.
+        
+        :param self: The object itself
+        :param clock: The pygame clock object
+        :param player: The player object
+        """
+        if not self.debug_enabled:
+            return
+
+        GL.glDisable(GL.GL_DEPTH_TEST)
+        GL.glDisable(GL.GL_CULL_FACE)
+
+        GL.glUseProgram(self.debug_program)
+        GL.glEnable(GL.GL_BLEND)
+        GL.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA)
+
+        GL.glUniform2f(
+            self.debug_u_view,
+            float(self.debug_vw),
+            float(self.debug_vh),
+        )
+
+        GL.glBindVertexArray(self.debug_vao)
+        GL.glActiveTexture(GL.GL_TEXTURE0)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self.debug_tex)
+
+        lines = [
+            f"FPS: {clock.get_fps():.1f}",
+            f"Pos: {player.position[0]:.2f}, "
+            f"{player.position[1]:.2f}, "
+            f"{player.position[2]:.2f}",
+        ]
+
+        x, y = 10, 10
+        for line in lines:
+            surf = self.debug_font.render(
+                line, True, (255, 255, 255)
+            ).convert_alpha()
+
+            w, h = self.upload_debug_surface(surf)
+
+            GL.glUniform2f(self.debug_u_offset, x, y)
+            GL.glUniform2f(self.debug_u_scale, w, h)
+            GL.glDrawArrays(GL.GL_TRIANGLES, 0, 6)
+            y += h + 4
+
+        GL.glBindVertexArray(0)
+        GL.glDisable(GL.GL_BLEND)
+        GL.glUseProgram(0)
 
         GL.glEnable(GL.GL_DEPTH_TEST)
+        GL.glEnable(GL.GL_CULL_FACE)
+        
+        
+    def upload_debug_surface(self, surf):
+        """ Upload a pygame surface to the debug texture.
+        
+        :param self: The object itself
+        :param surf: The pygame surface to upload
+        :return: Width and height of the uploaded surface
+        """
+        data = pygame.image.tostring(surf, "RGBA", True)
 
-        # grid uniforms
-        self.grid_u_view = GL.glGetUniformLocation(self.grid_program, "u_view")
-        self.grid_u_proj = GL.glGetUniformLocation(self.grid_program, "u_proj")
-        self.grid_u_model = GL.glGetUniformLocation(self.grid_program, "u_model")
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self.debug_tex)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_LINEAR)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_LINEAR)
 
-        # object uniforms
-        self.obj_u_view = GL.glGetUniformLocation(self.object_program, "u_view")
-        self.obj_u_proj = GL.glGetUniformLocation(self.object_program, "u_proj")
-        self.obj_u_model = GL.glGetUniformLocation(self.object_program, "u_model")
-        self.obj_u_color = GL.glGetUniformLocation(self.object_program, "u_color")
-
-        self.obj_u_texture = GL.glGetUniformLocation(self.object_program, "u_texture")
-        self.obj_u_use_texture = GL.glGetUniformLocation(
-            self.object_program, "u_use_texture"
-        )
-
-        self.obj_u_texture_mode = GL.glGetUniformLocation(
-            self.object_program, "u_texture_mode"
-        )
-
-        self.obj_u_triplanar_scale = GL.glGetUniformLocation(
-            self.object_program, "u_triplanar_scale"
-        )
-
-        self.obj_u_emissive = GL.glGetUniformLocation(self.object_program, "u_emissive")
-
-        # lighting uniforms
-        self.obj_u_light_pos = GL.glGetUniformLocation(self.object_program, "u_light_pos")
-        self.obj_u_light_color = GL.glGetUniformLocation(
-            self.object_program, "u_light_color"
-        )
-        self.obj_u_light_intensity = GL.glGetUniformLocation(
-            self.object_program, "u_light_intensity"
-        )
-        self.obj_u_ambient_strength = GL.glGetUniformLocation(
-            self.object_program, "u_ambient_strength"
-        )
-
-        # SSAO uniforms for object shader
-        self.obj_u_ssao = GL.glGetUniformLocation(self.object_program, "u_ssao")
-        self.obj_u_screen_size = GL.glGetUniformLocation(
-            self.object_program, "u_screen_size"
-        )
-
-        # ---------- SSAO G-buffer ----------
-        self.gbuffer = GL.glGenFramebuffers(1)
-        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self.gbuffer)
-
-        # normal texture
-        self.g_normal = GL.glGenTextures(1)
-        GL.glBindTexture(GL.GL_TEXTURE_2D, self.g_normal)
-        GL.glTexImage2D(
-            GL.GL_TEXTURE_2D, 0, GL.GL_RGBA, 1280, 720, 0, GL.GL_RGBA, GL.GL_UNSIGNED_BYTE, None
-        )
-        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_NEAREST)
-        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_NEAREST)
-        GL.glFramebufferTexture2D(
-            GL.GL_FRAMEBUFFER, GL.GL_COLOR_ATTACHMENT0, GL.GL_TEXTURE_2D, self.g_normal, 0
-        )
-
-        # depth texture
-        self.g_depth = GL.glGenTextures(1)
-        GL.glBindTexture(GL.GL_TEXTURE_2D, self.g_depth)
         GL.glTexImage2D(
             GL.GL_TEXTURE_2D,
             0,
-            GL.GL_DEPTH_COMPONENT,
-            1280,
-            720,
+            GL.GL_RGBA,
+            surf.get_width(),
+            surf.get_height(),
             0,
-            GL.GL_DEPTH_COMPONENT,
-            GL.GL_FLOAT,
-            None,
+            GL.GL_RGBA,
+            GL.GL_UNSIGNED_BYTE,
+            data,
         )
-        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_NEAREST)
-        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_NEAREST)
-        GL.glFramebufferTexture2D(
-            GL.GL_FRAMEBUFFER, GL.GL_DEPTH_ATTACHMENT, GL.GL_TEXTURE_2D, self.g_depth, 0
+        return surf.get_width(), surf.get_height()
+
+    def draw_debug_grid(self, camera, aspect, size: float):
+        """
+        Used for drawing a debug grid plane in the scene.
+        
+        :param self: The object itself
+        :param camera: The camera object
+        :param aspect: The aspect ratio of the viewport
+        :param size: The size of the grid plane
+        :type size: float
+        """
+        GL.glUseProgram(self.grid_program)
+
+        GL.glUniformMatrix4fv(
+            self.grid_u_view, 1, GL.GL_TRUE, camera.get_view_matrix()
+        )
+        GL.glUniformMatrix4fv(
+            self.grid_u_proj, 1, GL.GL_TRUE, camera.get_projection_matrix(aspect)
+        )
+        GL.glUniformMatrix4fv(
+            self.grid_u_model, 1, GL.GL_TRUE, self.model
         )
 
-        assert GL.glCheckFramebufferStatus(GL.GL_FRAMEBUFFER) == GL.GL_FRAMEBUFFER_COMPLETE
-        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
-
-        # SSAO kernel
-        self.ssao_kernel = []
-        for i in range(64):
-            sample = np.random.uniform(-1.0, 1.0, 3)
-            sample[2] = np.random.uniform(0.0, 1.0)
-            sample = sample / np.linalg.norm(sample)
-            scale = i / 64.0
-            scale = 0.1 + 0.9 * scale * scale
-            self.ssao_kernel.append(sample * scale)
-
-        self.ssao_kernel = np.array(self.ssao_kernel, dtype=np.float32)
-
-        # SSAO noise
-        noise = np.random.uniform(-1.0, 1.0, (16, 3)).astype(np.float32)
-        self.ssao_noise_tex = GL.glGenTextures(1)
-        GL.glBindTexture(GL.GL_TEXTURE_2D, self.ssao_noise_tex)
-        GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RGB, 4, 4, 0, GL.GL_RGB, GL.GL_FLOAT, noise)
-        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_NEAREST)
-        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_NEAREST)
-
-        # SSAO framebuffer and texture
-        self.ssao_fbo = GL.glGenFramebuffers(1)
-        self.ssao_tex = GL.glGenTextures(1)
-
-        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self.ssao_fbo)
-        GL.glBindTexture(GL.GL_TEXTURE_2D, self.ssao_tex)
-        GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RED, 1280, 720, 0, GL.GL_RED, GL.GL_FLOAT, None)
-        GL.glFramebufferTexture2D(
-            GL.GL_FRAMEBUFFER, GL.GL_COLOR_ATTACHMENT0, GL.GL_TEXTURE_2D, self.ssao_tex, 0
-        )
-        # initialize SSAO texture to white (AO = 1.0 default)
-        white = np.ones((720, 1280), dtype=np.float32)
-        GL.glBindTexture(GL.GL_TEXTURE_2D, self.ssao_tex)
-        GL.glTexSubImage2D(GL.GL_TEXTURE_2D, 0, 0, 0, 1280, 720, GL.GL_RED, GL.GL_FLOAT, white)
-        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
-
-        # fullscreen quad
-        quad = np.array(
+        GL.glBindVertexArray(self.grid_vao)
+        GL.glDrawArrays(GL.GL_TRIANGLES, 0, self.grid_vertex_count)
+        GL.glBindVertexArray(0)
+        
+    def create_grid_plane(self, size: float):
+        """
+        create a grid plane mesh for debugging purposes.
+        
+        :param self: The object itself
+        :param size: The size of the grid plane
+        :type size: float
+        """
+        vertices = np.array(
             [
-                -1,
-                -1,
-                0,
-                0,
-                1,
-                -1,
-                1,
-                0,
-                1,
-                1,
-                1,
-                1,
-                -1,
-                -1,
-                0,
-                0,
-                1,
-                1,
-                1,
-                1,
-                -1,
-                1,
-                0,
-                1,
+                -size, 0.0, -size,  0, 1, 0,  0, 0,
+                 size, 0.0, -size,  0, 1, 0,  1, 0,
+                 size, 0.0,  size,  0, 1, 0,  1, 1,
+
+                -size, 0.0, -size,  0, 1, 0,  0, 0,
+                 size, 0.0,  size,  0, 1, 0,  1, 1,
+                -size, 0.0,  size,  0, 1, 0,  0, 1,
             ],
             dtype=np.float32,
         )
+
+        vao = GL.glGenVertexArrays(1)
+        vbo = GL.glGenBuffers(1)
+
+        GL.glBindVertexArray(vao)
+        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo)
+        GL.glBufferData(GL.GL_ARRAY_BUFFER, vertices.nbytes, vertices, GL.GL_STATIC_DRAW)
+
+        stride = 8 * 4
+        GL.glEnableVertexAttribArray(0)
+        GL.glVertexAttribPointer(0, 3, GL.GL_FLOAT, GL.GL_FALSE, stride, ctypes.c_void_p(0))
+        GL.glEnableVertexAttribArray(1)
+        GL.glVertexAttribPointer(1, 3, GL.GL_FLOAT, GL.GL_FALSE, stride, ctypes.c_void_p(12))
+        GL.glEnableVertexAttribArray(2)
+        GL.glVertexAttribPointer(2, 2, GL.GL_FLOAT, GL.GL_FALSE, stride, ctypes.c_void_p(24))
+
+        GL.glBindVertexArray(0)
+        return vao, len(vertices) // 8
+    
+
+    def create_ssao_buffers(self, width: int, height: int) -> dict:
+        """Create framebuffers and textures needed for SSAO.
+
+        The SSAO pass samples positions and normals from a G‑buffer.  We store
+        positions in view space, normals and a colour buffer (unused here
+        but often useful).  An additional texture holds the SSAO
+        occlusion factor and another stores a blurred version of that
+        texture.
+
+        :param width: Width of the screen.
+        :param height: Height of the screen.
+        :return: Dictionary with names -> texture ids and FBOs.
+        """
+        self.g_fbo = GL.glGenFramebuffers(1)
+        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self.g_fbo)
+        
+        # Position texture
+        self.g_position = GL.glGenTextures(1)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self.g_position)
+        GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RGB32F, width, height, 0, GL.GL_RGB, GL.GL_FLOAT, None)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_NEAREST)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_NEAREST)
+        GL.glFramebufferTexture2D(GL.GL_FRAMEBUFFER, GL.GL_COLOR_ATTACHMENT0, GL.GL_TEXTURE_2D, self.g_position, 0)
+        
+        # Normal texture
+        self.g_normal = GL.glGenTextures(1)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self.g_normal)
+        GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RGB16F, width, height, 0, GL.GL_RGB, GL.GL_FLOAT, None)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_NEAREST)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_NEAREST)
+        GL.glFramebufferTexture2D(GL.GL_FRAMEBUFFER, GL.GL_COLOR_ATTACHMENT1, GL.GL_TEXTURE_2D, self.g_normal, 0)
+        
+        # Color Buffer (RGB16F for view normal)
+        self.g_color = GL.glGenTextures(1)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self.g_color)
+        GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RGB16F, width, height, 0, GL.GL_RGB, GL.GL_FLOAT, None)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_NEAREST)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_NEAREST)
+        GL.glFramebufferTexture2D(GL.GL_FRAMEBUFFER, GL.GL_COLOR_ATTACHMENT2, GL.GL_TEXTURE_2D, self.g_color, 0) 
+        
+        # depth renderbuffer
+        self.rbo_depth = GL.glGenRenderbuffers(1)
+        GL.glBindRenderbuffer(GL.GL_RENDERBUFFER, self.rbo_depth)
+        GL.glRenderbufferStorage(GL.GL_RENDERBUFFER, GL.GL_DEPTH_COMPONENT, width, height)
+        GL.glFramebufferRenderbuffer(GL.GL_FRAMEBUFFER, GL.GL_DEPTH_ATTACHMENT, GL.GL_RENDERBUFFER, self.rbo_depth)
+        
+        # specify the color attachments for rendering
+        self.attachments = [GL.GL_COLOR_ATTACHMENT0, GL.GL_COLOR_ATTACHMENT1, GL.GL_COLOR_ATTACHMENT2]
+        GL.glDrawBuffers(len(self.attachments), self.attachments)
+        if GL.glCheckFramebufferStatus(GL.GL_FRAMEBUFFER) != GL.GL_FRAMEBUFFER_COMPLETE:
+            raise RuntimeError("G-Buffer Framebuffer not complete")
+        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
+        
+        # SSAO FBO and texture
+        self.ssao_fbo = GL.glGenFramebuffers(1)
+        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self.ssao_fbo)
+        self.ssao_texture = GL.glGenTextures(1)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self.ssao_texture)
+        GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RED, width, height, 0, GL.GL_RED, GL.GL_FLOAT, None)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_NEAREST)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_NEAREST)
+        GL.glFramebufferTexture2D(GL.GL_FRAMEBUFFER, GL.GL_COLOR_ATTACHMENT0, GL.GL_TEXTURE_2D, self.ssao_texture, 0)
+        if GL.glCheckFramebufferStatus(GL.GL_FRAMEBUFFER) != GL.GL_FRAMEBUFFER_COMPLETE:
+            raise RuntimeError("SSAO Framebuffer not complete")
+        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
+        
+        # SSAO Blur FBO and texture
+        self.ssao_blur_fbo = GL.glGenFramebuffers(1)
+        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self.ssao_blur_fbo)
+        self.ssao_blur_texture = GL.glGenTextures(1)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self.ssao_blur_texture)
+        GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RED, width, height, 0, GL.GL_RED, GL.GL_FLOAT, None)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_NEAREST)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_NEAREST)
+        GL.glFramebufferTexture2D(GL.GL_FRAMEBUFFER, GL.GL_COLOR_ATTACHMENT0, GL.GL_TEXTURE_2D, self.ssao_blur_texture, 0)
+        if GL.glCheckFramebufferStatus(GL.GL_FRAMEBUFFER) != GL.GL_FRAMEBUFFER_COMPLETE:
+            raise RuntimeError("SSAO Blur Framebuffer not complete")
+        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0) 
+        
+        return {
+            "g_fbo": self.g_fbo,
+            "g_position": self.g_position,
+            "g_normal": self.g_normal,
+            "g_color": self.g_color,
+            "ssao_fbo": self.ssao_fbo,
+            "ssao_tex": self.ssao_texture,
+            "ssao_blur_fbo": self.ssao_blur_fbo,
+            "ssao_blur_texture": self.ssao_blur_texture,
+            "depth_rbo": self.rbo_depth,
+        }
+        
+        
+    def create_ssao_kernel(self, kernel_size: int=64) -> list:
+        """Generate a list of sample vectors for SSAO.
+
+        The samples are distributed within a hemisphere oriented along the
+        z-axis.  A bias towards the origin is applied so more samples lie
+        close to the surface, which improves the quality of the occlusion.
+
+        :param kernel_size: Number of sample vectors to generate.
+        :return: List of 3-component numpy arrays.
+        """
+        self.kernel = []
+        for i in range(kernel_size):
+            sample = np.array([
+                random.uniform(-1.0, 1.0),
+                random.uniform(-1.0, 1.0),
+                random.uniform(0.0, 1.0),
+            ], dtype=np.float32)
+            sample = sample / np.linalg.norm(sample)
+            scale = float(i) / kernel_size
+            scale = 0.1 + 0.9 * (scale * scale)
+            sample = sample * scale
+            self.kernel.append(sample)
+        return self.kernel
+    
+    
+    def generate_ssao_noise(self) -> np.ndarray:
+        """Generate a small 4×4 noise texture for SSAO.
+
+        The noise vectors rotate the sampling hemisphere around the normal.
+        The texture is tiled across the screen to introduce noise.
+
+        :return: A (4,4,3) float32 array of random vectors.
+        """ 
+        self.noise = np.zeros((4, 4, 3), dtype=np.float32)
+        for i in range(4):
+            for j in range(4):
+                self.noise[i, j] = np.array([
+                    random.uniform(-1.0, 1.0),
+                    random.uniform(-1.0, 1.0),
+                    0.0,
+                ], dtype=np.float32)
+                self.noise[i, j] = self.noise[i, j] / np.linalg.norm(self.noise[i, j]) # normalize (Optional)
+        return self.noise
+    
+    
+    def create_noise_texture(self, noise: np.ndarray) -> int:
+        """Create an OpenGL texture from the SSAO noise data.
+
+        :param noise: A (4,4,3) float32 array of random vectors.
+        :return: OpenGL texture id.
+        """
+        noise_texture = GL.glGenTextures(1)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, noise_texture)
+        GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RGB16F, 4, 4, 0, GL.GL_RGB, GL.GL_FLOAT, noise)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_NEAREST)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_NEAREST)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_S, GL.GL_REPEAT)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_T, GL.GL_REPEAT)
+        return noise_texture
+    
+    
+    def create_frame_buffers(self) -> None:
+        """
+        Allocates FBO and textures for SSAO, shadow mapping, and other passes.
+        
+        :param self: The Renderer instance
+        """
+        self.shadowsize = 16384
+        self.depth_fbo, self.depth_texture = create_depth_map(self.shadowsize)
+        self.ssao_data = self.create_ssao_buffers(self.width, self.height)
+        
+        self.ref_tex = GL.glGenTextures(1)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self.ref_tex)
+        GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RGBA8, self.width, self.height, 0, GL.GL_RGBA, GL.GL_UNSIGNED_BYTE, None)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_LINEAR)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_LINEAR)
+        self.ref_fbo = GL.glGenFramebuffers(1)
+        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self.ref_fbo)
+        GL.glFramebufferTexture2D(GL.GL_FRAMEBUFFER, GL.GL_COLOR_ATTACHMENT0, GL.GL_TEXTURE_2D, self.ref_tex, 0)
+        self.ref_rbo = GL.glGenRenderbuffers(1)
+        GL.glBindRenderbuffer(GL.GL_RENDERBUFFER, self.ref_rbo)
+        GL.glRenderbufferStorage(GL.GL_RENDERBUFFER, GL.GL_DEPTH_COMPONENT24, self.width, self.height)
+        GL.glFramebufferRenderbuffer(GL.GL_FRAMEBUFFER, GL.GL_DEPTH_ATTACHMENT, GL.GL_RENDERBUFFER, self.ref_rbo)
+        assert GL.glCheckFramebufferStatus(GL.GL_FRAMEBUFFER) == GL.GL_FRAMEBUFFER_COMPLETE
+        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
+        
+        
+    def cache_uniform_locations(self) -> None:
+        """Query and store frequently accessed uniform locations."""
+        # Grid shader uniforms
+        self.grid_u_view = GL.glGetUniformLocation(self.grid_program, "u_view")
+        self.grid_u_proj = GL.glGetUniformLocation(self.grid_program, "u_proj")
+        self.grid_u_model = GL.glGetUniformLocation(self.grid_program, "u_model")
+        
+        # Depth program uniforms
+        self.depth_model_loc = GL.glGetUniformLocation(self.depth_program, "model")
+        self.depth_lightspace_loc = GL.glGetUniformLocation(self.depth_program, "lightSpaceMatrix")
+
+        # G-buffer program uniforms
+        self.g_model_loc = GL.glGetUniformLocation(self.geometry_program, "model")
+        self.g_view_loc = GL.glGetUniformLocation(self.geometry_program, "view")
+        self.g_proj_loc = GL.glGetUniformLocation(self.geometry_program, "projection")
+        self.g_object_color_loc = GL.glGetUniformLocation(self.geometry_program, "objectColor")
+
+        # Final shader uniforms
+        self.final_model_loc = GL.glGetUniformLocation(self.final_program, "model")
+        self.final_view_loc = GL.glGetUniformLocation(self.final_program, "view")
+        self.final_proj_loc = GL.glGetUniformLocation(self.final_program, "projection")
+        self.final_lightspace_loc = GL.glGetUniformLocation(self.final_program, "lightSpaceMatrix")
+        self.final_light_pos_loc = GL.glGetUniformLocation(self.final_program, "lightPos")
+        self.final_view_pos_loc = GL.glGetUniformLocation(self.final_program, "viewPos")
+        self.final_light_color_loc = GL.glGetUniformLocation(self.final_program, "lightColor")
+        self.final_object_color_loc = GL.glGetUniformLocation(self.final_program, "objectColor")
+        self.final_reflection_vp_loc = GL.glGetUniformLocation(self.final_program, "reflectionViewProj")
+        self.final_reflect_tex_loc = GL.glGetUniformLocation(self.final_program, "reflectionTex")
+        self.final_reflectivity_loc = GL.glGetUniformLocation(self.final_program, "reflectivity")
+            
+    def light_space_matrix(self, light_pos: np.ndarray, target: np.ndarray = np.array([0.0, 0.0, 0.0], dtype=np.float32), up: np.ndarray = np.array([0.0, 1.0, 0.0], dtype=np.float32)) -> np.ndarray:
+        """Compute the light space transformation matrix for shadow mapping.
+
+        :param light_pos: Position of the light in world space.
+        :param target: Target point the light is looking at.
+        :param up: Up vector for the light's view matrix.
+        :return: 4x4 light space transformation matrix.
+        """
+        light_view = look_at(light_pos, target, up)
+        light_space = np.matmul(self.light_projection, light_view)
+        return light_space
+    
+    def render_reflection_pass(self, ref_view, ref_cam_pos, scene_objects: list[RenderObject]) -> None:
+        """
+        Docstring for reflection_pass
+        
+        :param self: The object itself
+        :param ref_view: reflection view matrix
+        :param ref_cam_pos: reflection camera position
+        :param obj: The object to render
+        """
+        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self.ref_fbo)
+        GL.glViewport(0, 0, self.width, self.height)
+        GL.glClear(int(GL.GL_COLOR_BUFFER_BIT) | int(GL.GL_DEPTH_BUFFER_BIT))
+        GL.glCullFace(GL.GL_FRONT)
+
+        GL.glUseProgram(self.final_program)
+        GL.glUniformMatrix4fv(self.final_proj_loc, 1, GL.GL_TRUE, self.projection)
+        GL.glUniformMatrix4fv(self.final_view_loc, 1, GL.GL_TRUE, ref_view)
+        GL.glUniform3fv(self.final_view_pos_loc, 1, ref_cam_pos)
+        GL.glUniform1f(self.final_reflectivity_loc, 0.0)
+
+        for obj in scene_objects:
+            GL.glUniformMatrix4fv(
+                self.final_model_loc, 1, GL.GL_TRUE, obj.transform.matrix()
+            )
+            GL.glUniform3f(self.final_object_color_loc, *obj.material.color)
+
+            obj.mesh.draw()
+
+        GL.glCullFace(GL.GL_BACK)
+        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
+        
+    def render_shadow_pass(self, light_pos: np.ndarray, scene_objects: list[RenderObject]) -> None:
+        """
+        Docstring for shadow_pass
+        
+        :param self: The object itself
+        :param light_pos: Position of the light source
+        :param scene_objects: List of objects in the scene
+        """
+        light_space = self.light_space_matrix(light_pos)
+        GL.glViewport(0, 0, self.shadowsize, self.shadowsize)
+        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self.depth_fbo)
+        GL.glClear(GL.GL_DEPTH_BUFFER_BIT)
+
+        GL.glUseProgram(self.depth_program)
+        GL.glUniformMatrix4fv(self.depth_lightspace_loc, 1, GL.GL_TRUE, light_space)
+
+        for obj in scene_objects:
+            GL.glUniformMatrix4fv(
+                self.depth_model_loc, 1, GL.GL_TRUE, obj.transform.matrix())
+            obj.mesh.draw()
+
+        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
+        
+    def create_fullscreen_quad(self):
+        """
+        Docstring für create_fullscreen_quad
+        
+        :param self: The object itself
+        description: Creates a fullscreen quad for post-processing effects.
+        """
+        vertices = np.array([
+            # pos      # uv
+            -1.0, -1.0, 0.0, 0.0,
+            1.0, -1.0, 1.0, 0.0,
+            1.0,  1.0, 1.0, 1.0,
+            -1.0, -1.0, 0.0, 0.0,
+            1.0,  1.0, 1.0, 1.0,
+            -1.0,  1.0, 0.0, 1.0,
+        ], dtype=np.float32)
 
         self.quad_vao = GL.glGenVertexArrays(1)
         self.quad_vbo = GL.glGenBuffers(1)
 
         GL.glBindVertexArray(self.quad_vao)
         GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.quad_vbo)
-        GL.glBufferData(GL.GL_ARRAY_BUFFER, quad.nbytes, quad, GL.GL_STATIC_DRAW)
+        GL.glBufferData(
+            GL.GL_ARRAY_BUFFER,
+            vertices.nbytes,
+            vertices,
+            GL.GL_STATIC_DRAW
+        )
 
+        stride = 4 * 4  # 4 floats per vertex
+
+        # position (location = 0)
         GL.glEnableVertexAttribArray(0)
-        GL.glVertexAttribPointer(0, 2, GL.GL_FLOAT, GL.GL_FALSE, 4 * 4, None)
+        GL.glVertexAttribPointer(
+            0, 2, GL.GL_FLOAT, GL.GL_FALSE, stride, ctypes.c_void_p(0)
+        )
 
+        # texcoord (location = 1)
         GL.glEnableVertexAttribArray(1)
-        GL.glVertexAttribPointer(1, 2, GL.GL_FLOAT, GL.GL_FALSE, 4 * 4, ctypes.c_void_p(8))
-
-        GL.glBindVertexArray(0)
-
-        self.model = np.identity(4, dtype=np.float32)
-
-        # active light (single-light pipeline)
-        self.light_pos = (0.0, 0.0, 0.0)
-        self.light_color = (1.0, 1.0, 1.0)
-        self.light_intensity = 0.0
-
-    def set_light(self, position, color, intensity):
-        """
-        Set the active point light (used by all objects).
-        """
-        self.light_pos = position
-        self.light_color = color
-        self.light_intensity = intensity
-
-    def _create_plane(self, size):
-        """
-        Docstring für _create_plane
-
-        :param self: The object itself
-        :param size: The size of the plane
-        """
-        # XZ plane at Y = 0
-        vertices = np.array(
-            [
-                -size,
-                0.0,
-                -size,
-                size,
-                0.0,
-                -size,
-                size,
-                0.0,
-                size,
-                -size,
-                0.0,
-                -size,
-                size,
-                0.0,
-                size,
-                -size,
-                0.0,
-                size,
-            ],
-            dtype=np.float32,
+        GL.glVertexAttribPointer(
+            1, 2, GL.GL_FLOAT, GL.GL_FALSE, stride, ctypes.c_void_p(8)
         )
 
-        self.vao = GL.glGenVertexArrays(1)
-        self.vbo = GL.glGenBuffers(1)
-
-        GL.glBindVertexArray(self.vao)
-        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.vbo)
-        GL.glBufferData(GL.GL_ARRAY_BUFFER, vertices.nbytes, vertices, GL.GL_STATIC_DRAW)
-
-        GL.glEnableVertexAttribArray(0)
-        GL.glVertexAttribPointer(0, 3, GL.GL_FLOAT, GL.GL_FALSE, 0, None)
-
         GL.glBindVertexArray(0)
-
-        self.vertex_count = 6
-
-    def draw_plane(self, camera, aspect):
+        
+    def render_ssao_pass(self, camera, scene_objects: list[RenderObject]) -> None:
         """
-        Docstring für draw_plane
+        
+        Global SSAO pass (scene-wide, object-agnostic).
 
         :param self: The object itself
         :param camera: The camera object
-        :param aspect: The aspect ratio of the viewport
+        :param scene_objects: List of objects in the scene
+        
+        :description:
+        1. Geometry pass → write positions & normals into G-buffer
+        2. SSAO evaluation → sample hemisphere kernel
+        3. Blur SSAO texture
         """
-        GL.glUseProgram(self.grid_program)
-
-        view = camera.get_view_matrix()
-        proj = camera.get_projection_matrix(aspect)
-
-        GL.glUniformMatrix4fv(self.grid_u_view, 1, GL.GL_TRUE, view)
-        GL.glUniformMatrix4fv(self.grid_u_proj, 1, GL.GL_TRUE, proj)
-        GL.glUniformMatrix4fv(self.grid_u_model, 1, GL.GL_TRUE, self.model)
-
-        GL.glBindVertexArray(self.vao)
-        GL.glDrawArrays(GL.GL_TRIANGLES, 0, self.vertex_count)
-        GL.glBindVertexArray(0)
-
-    def draw_object(self, obj, camera, aspect):
-        """
-        Docstring für draw_object
-
-        :param self: The object itself
-        :param obj: The object to draw
-        :param camera: The camera object
-        :param aspect: The aspect ratio of the viewport
-        """
-        GL.glUseProgram(self.object_program)
-
-        view = camera.get_view_matrix()
-        proj = camera.get_projection_matrix(aspect)
-        model = obj.transform.matrix()
-
-        GL.glUniformMatrix4fv(self.obj_u_view, 1, GL.GL_TRUE, view)
-        GL.glUniformMatrix4fv(self.obj_u_proj, 1, GL.GL_TRUE, proj)
-        GL.glUniformMatrix4fv(self.obj_u_model, 1, GL.GL_TRUE, model)
-
-        # material color fallback
-        GL.glUniform3f(self.obj_u_color, *obj.material.color)
-
-        # texture binding (if present)
-        if obj.material and obj.material.texture is not None:
-            GL.glActiveTexture(GL.GL_TEXTURE0)
-            GL.glBindTexture(GL.GL_TEXTURE_2D, obj.material.texture)
-            GL.glUniform1i(self.obj_u_texture, 0)
-            GL.glUniform1i(self.obj_u_use_texture, 1)
-        else:
-            GL.glUniform1i(self.obj_u_use_texture, 0)
-
-        # emissive flag (sun / lamps)
-        is_emissive = obj.material is not None and getattr(
-            obj.material, "emissive", False
-        )
-        GL.glUniform1i(self.obj_u_emissive, int(is_emissive))
-
-        # SSAO texture
-        GL.glActiveTexture(GL.GL_TEXTURE1)
-        GL.glBindTexture(GL.GL_TEXTURE_2D, self.ssao_tex)
-        GL.glUniform1i(self.obj_u_ssao, 1)
-        GL.glUniform2f(self.obj_u_screen_size, 1280.0, 720.0)
-
-        mat = obj.material
-        mode = getattr(mat, "texture_scale_mode", None) or "default"
-
-        # -------- default: UV mapping (object-local) --------
-        if mode == "default":
-            # Shader: u_texture_mode == 0 → UV-Mapping
-            GL.glUniform1i(self.obj_u_texture_mode, 0)
-
-            # triplanar scale wird hier NICHT benutzt
-            GL.glUniform1f(self.obj_u_triplanar_scale, 1.0)
-
-        # -------- triplanar: world-space --------
-        elif mode == "triplanar":
-            GL.glUniform1i(self.obj_u_texture_mode, 1)
-
-            # klassisches world-aligned triplanar
-            GL.glUniform1f(self.obj_u_triplanar_scale, 0.1)
-
-        # -------- manual triplanar --------
-        elif mode == "manual":
-            assert (
-                mat.texture_scale_value is not None
-            ), "texture_scale_value required when texture_scale_mode == 'manual'"
-
-            GL.glUniform1i(self.obj_u_texture_mode, 1)
-            GL.glUniform1f(self.obj_u_triplanar_scale, mat.texture_scale_value)
-
-        # -------- safety fallback --------
-        else:
-            GL.glUniform1i(self.obj_u_texture_mode, 0)
-            GL.glUniform1f(self.obj_u_triplanar_scale, 1.0)
-
-        # lighting (dynamic light from world)
-        GL.glUniform3f(self.obj_u_light_pos, *self.light_pos)
-        GL.glUniform3f(self.obj_u_light_color, *self.light_color)
-        GL.glUniform1f(self.obj_u_light_intensity, self.light_intensity)
-        GL.glUniform1f(self.obj_u_ambient_strength, 0.25)
-
-        obj.mesh.draw()
-
-    def render_normals(self, objects, camera, aspect):
-        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self.gbuffer)
-        GL.glUseProgram(self.normal_program)
+        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self.ssao_data["g_fbo"])
+        GL.glViewport(0, 0, self.width, self.height)
+        GL.glClear(int(GL.GL_COLOR_BUFFER_BIT) | int(GL.GL_DEPTH_BUFFER_BIT))
         GL.glEnable(GL.GL_DEPTH_TEST)
 
+        GL.glUseProgram(self.geometry_program)
+
         view = camera.get_view_matrix()
-        proj = camera.get_projection_matrix(aspect)
+        proj = camera.get_projection_matrix(self.width / self.height)
 
-        for obj in objects:
-            model = obj.transform.matrix()
+        GL.glUniformMatrix4fv(self.g_view_loc, 1, GL.GL_TRUE, view)
+        GL.glUniformMatrix4fv(self.g_proj_loc, 1, GL.GL_TRUE, proj)
 
+        for obj in scene_objects:
             GL.glUniformMatrix4fv(
-                GL.glGetUniformLocation(self.normal_program, "u_view"), 1, GL.GL_TRUE, view
+                self.g_model_loc, 1, GL.GL_TRUE, obj.transform.matrix()
             )
-            GL.glUniformMatrix4fv(
-                GL.glGetUniformLocation(self.normal_program, "u_proj"), 1, GL.GL_TRUE, proj
-            )
-            GL.glUniformMatrix4fv(
-                GL.glGetUniformLocation(self.normal_program, "u_model"), 1, GL.GL_TRUE, model
-            )
+
+            # Farbe ist für SSAO irrelevant, aber Shader braucht evtl. einen Wert
+            GL.glUniform3f(self.g_object_color_loc, 1.0, 1.0, 1.0)
 
             obj.mesh.draw()
 
         GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
+        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self.ssao_data["ssao_fbo"])
+        GL.glViewport(0, 0, self.width, self.height)
+        GL.glClear(GL.GL_COLOR_BUFFER_BIT)
+        GL.glDisable(GL.GL_DEPTH_TEST)
 
-    def render_ssao(self, camera, width, height):
-        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self.ssao_fbo)
         GL.glUseProgram(self.ssao_program)
 
+        # G-buffer inputs
         GL.glActiveTexture(GL.GL_TEXTURE0)
-        GL.glBindTexture(GL.GL_TEXTURE_2D, self.g_normal)
-        GL.glUniform1i(GL.glGetUniformLocation(self.ssao_program, "u_normal"), 0)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self.ssao_data["g_position"])
+        GL.glUniform1i(
+            GL.glGetUniformLocation(self.ssao_program, "gPosition"), 0
+        )
 
         GL.glActiveTexture(GL.GL_TEXTURE1)
-        GL.glBindTexture(GL.GL_TEXTURE_2D, self.g_depth)
-        GL.glUniform1i(GL.glGetUniformLocation(self.ssao_program, "u_depth"), 1)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self.ssao_data["g_normal"])
+        GL.glUniform1i(
+            GL.glGetUniformLocation(self.ssao_program, "gNormal"), 1
+        )
 
         GL.glActiveTexture(GL.GL_TEXTURE2)
-        GL.glBindTexture(GL.GL_TEXTURE_2D, self.ssao_noise_tex)
-        GL.glUniform1i(GL.glGetUniformLocation(self.ssao_program, "u_noise"), 2)
-
-        for i in range(64):
-            GL.glUniform3fv(
-                GL.glGetUniformLocation(self.ssao_program, f"u_samples[{i}]"),
-                1,
-                self.ssao_kernel[i],
-            )
-
-        GL.glUniformMatrix4fv(
-            GL.glGetUniformLocation(self.ssao_program, "u_proj"),
-            1,
-            GL.GL_TRUE,
-            camera.get_projection_matrix(width / height),
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self.ssao_noise_texture)
+        GL.glUniform1i(
+            GL.glGetUniformLocation(self.ssao_program, "noiseTex"), 2
         )
 
-        GL.glUniform2f(
-            GL.glGetUniformLocation(self.ssao_program, "u_noise_scale"),
-            width / 4.0,
-            height / 4.0,
-        )
-
-        GL.glUniform1f(GL.glGetUniformLocation(self.ssao_program, "u_radius"), 0.25)
-        GL.glUniform1f(GL.glGetUniformLocation(self.ssao_program, "u_bias"), 0.05)
-
+        # fullscreen quad
         GL.glBindVertexArray(self.quad_vao)
         GL.glDrawArrays(GL.GL_TRIANGLES, 0, 6)
         GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
+
+
+        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self.ssao_data["ssao_blur_fbo"])
+        GL.glViewport(0, 0, self.width, self.height)
+        GL.glClear(GL.GL_COLOR_BUFFER_BIT)
+
+        GL.glUseProgram(self.ssao_blur_program)
+
+        GL.glActiveTexture(GL.GL_TEXTURE0)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self.ssao_data["ssao_tex"])
+        GL.glUniform1i(
+            GL.glGetUniformLocation(self.ssao_blur_program, "ssaoInput"), 0
+        )
+
+        GL.glBindVertexArray(self.quad_vao)
+        GL.glDrawArrays(GL.GL_TRIANGLES, 0, 6)
+
+        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
+        
+        
+    def render_final_pass(self, player, camera, light_space_matrix: np.ndarray, ref_view: np.ndarray, scene_objects: list[RenderObject]) -> None:
+        """
+        Final lighting pass.
+
+        Combines:
+        - Shadow mapping
+        - SSAO
+        - Planar reflections
+        - Forward lighting
+
+        :param player: the player object
+        :param camera: active camera
+        :param light_space_matrix: light projection * light view
+        :param ref_view: reflection view matrix
+        :param scene_objects: all visible objects
+        """
+
+        GL.glEnable(GL.GL_DEPTH_TEST)
+        GL.glViewport(0, 0, self.width, self.height)
+        GL.glClearColor(0.1, 0.1, 0.1, 1.0)
+        GL.glClear(int(GL.GL_COLOR_BUFFER_BIT) | int(GL.GL_DEPTH_BUFFER_BIT))
+
+        GL.glUseProgram(self.final_program)
+
+        # -----------------------
+        # Global uniforms
+        # -----------------------
+        view = camera.get_view_matrix()
+
+        GL.glUniformMatrix4fv(
+            self.final_proj_loc, 1, GL.GL_TRUE, self.projection
+        )
+        GL.glUniformMatrix4fv(
+            self.final_view_loc, 1, GL.GL_TRUE, view
+        )
+        GL.glUniformMatrix4fv(
+            self.final_lightspace_loc, 1, GL.GL_TRUE, light_space_matrix
+        )
+
+        GL.glUniform3fv(
+            self.final_light_pos_loc, 1, self.light_pos
+        )
+        GL.glUniform3fv(
+            self.final_view_pos_loc, 1, player.position
+        )
+        GL.glUniform3fv(
+            self.final_light_color_loc, 1, self.light_color
+        )
+
+        # Reflection VP
+        refl_vp = self.projection @ ref_view
+        GL.glUniformMatrix4fv(
+            self.final_reflection_vp_loc, 1, GL.GL_TRUE, refl_vp
+        )
+
+        # -----------------------
+        # Bind textures
+        # -----------------------
+
+        # Shadow map
+        GL.glActiveTexture(GL.GL_TEXTURE0)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self.depth_texture)
+        GL.glUniform1i(
+            GL.glGetUniformLocation(self.final_program, "shadowMap"), 0
+        )
+
+        # SSAO (blurred)
+        GL.glActiveTexture(GL.GL_TEXTURE1)
+        GL.glBindTexture(
+            GL.GL_TEXTURE_2D, self.ssao_data["ssao_blur_texture"]
+        )
+        GL.glUniform1i(
+            GL.glGetUniformLocation(self.final_program, "ssaoTexture"), 1
+        )
+
+        # Reflection texture
+        GL.glActiveTexture(GL.GL_TEXTURE2)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self.ref_tex)
+        GL.glUniform1i(self.final_reflect_tex_loc, 2)
+
+        # -----------------------
+        # Draw all objects
+        # -----------------------
+        for obj in scene_objects:
+            GL.glUniformMatrix4fv(
+                self.final_model_loc,
+                1,
+                GL.GL_TRUE,
+                obj.transform.matrix(),
+            )
+
+            GL.glUniform3f(
+                self.final_object_color_loc,
+                *obj.material.color
+            )
+            
+            # texture binding per object:
+            if obj.material.texture is not None:
+                GL.glActiveTexture(GL.GL_TEXTURE3)
+                GL.glBindTexture(GL.GL_TEXTURE_2D, obj.material.texture)
+                GL.glUniform1i(
+                    GL.glGetUniformLocation(self.final_program, "u_texture"),
+                    3,
+                )
+                GL.glUniform1i(
+                    GL.glGetUniformLocation(self.final_program, "u_use_texture"),
+                    1,
+                )
+            else:
+                GL.glUniform1i(
+                    GL.glGetUniformLocation(self.final_program, "u_use_texture"),
+                    0,
+                )
+                
+            #triplanarity is per-object
+            mode = getattr(obj.material, "texture_scale_mode", "default")
+
+            if mode == "default":
+                GL.glUniform1i(
+                    GL.glGetUniformLocation(self.final_program, "u_texture_mode"),
+                    0,
+                )
+                GL.glUniform1f(
+                    GL.glGetUniformLocation(self.final_program, "u_triplanar_scale"),
+                    1.0,
+                )
+
+            elif mode == "triplanar":
+                GL.glUniform1i(
+                    GL.glGetUniformLocation(self.final_program, "u_texture_mode"),
+                    1,
+                )
+                GL.glUniform1f(
+                    GL.glGetUniformLocation(self.final_program, "u_triplanar_scale"),
+                    0.1,
+                )
+
+            elif mode == "manual":
+                GL.glUniform1i(
+                    GL.glGetUniformLocation(self.final_program, "u_texture_mode"),
+                    1,
+                )
+                GL.glUniform1f(
+                    GL.glGetUniformLocation(self.final_program, "u_triplanar_scale"),
+                    obj.material.texture_scale_value,
+                )
+
+            # reflectivity is per-object
+            reflectivity = getattr(obj.material, "reflectivity", 0.0)
+            GL.glUniform1f(
+                self.final_reflectivity_loc,
+                reflectivity
+            )
+
+            obj.mesh.draw()    

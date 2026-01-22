@@ -68,7 +68,7 @@
       "collider": [1.5, 1.5, 1.5],
       "light": {
         "color": [1.0, 0.75, 0.55],
-        "intensity": 100.0
+        "intensity": 40.0
       }
     }
   ]
