@@ -17,9 +17,11 @@ uniform vec3 lightColor;
 uniform vec3 objectColor;
 uniform sampler2D u_texture;
 uniform bool u_use_texture;
-uniform int u_texture_mode;   // 0 = UV, 1 = triplanar
+uniform bool u_is_emissive;
+uniform int u_texture_mode; // 0 = UV, 1 = triplanar
+uniform float u_lightIntensity;
+uniform float u_ambientStrength;
 uniform float u_triplanar_scale;
-
 
 float ShadowCalculation(vec4 fragPosLightSpace) {
   vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
@@ -48,6 +50,11 @@ float ShadowCalculation(vec4 fragPosLightSpace) {
 void main() {
   vec3 baseColor;
 
+  if (u_is_emissive) {
+    FragColor = vec4(objectColor, 1.0);
+    return;
+  }
+
   if (u_use_texture) {
     if (u_texture_mode == 0) {
       // UV mapping
@@ -75,15 +82,15 @@ void main() {
 
   vec2 screenUV = gl_FragCoord.xy / vec2(textureSize(ssaoTexture, 0));
   float ao = texture(ssaoTexture, screenUV).r;
-  vec3 ambient = (0.3 + 0.7 * ao) * lightColor;
+  vec3 ambient = u_ambientStrength * ao * lightColor * u_lightIntensity;
   vec3 norm = normalize(Normal);
   vec3 lightDir = normalize(lightPos - FragPos);
   float diff = max(dot(norm, lightDir), 0.0);
-  vec3 diffuse = diff * lightColor * baseColor;
+  vec3 diffuse = diff * lightColor * baseColor * u_lightIntensity;
   vec3 viewDir = normalize(viewPos - FragPos);
   vec3 reflectDir = reflect(-lightDir, norm);
   float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0);
-  vec3 specular = spec * lightColor;
+  vec3 specular = spec * lightColor * u_lightIntensity;
   float shadow = ShadowCalculation(FragPosLightSpace);
 
   // Add attenuation based on distance

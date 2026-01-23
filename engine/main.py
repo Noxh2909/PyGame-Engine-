@@ -88,10 +88,18 @@ for obj in world.objects:
 # Sun / Light
 # ====================
 
-if world.sun and world.sun.light:
-    renderer.light_pos = np.array(world.sun.transform.position, dtype=np.float32)
-    renderer.light_color = np.array(world.sun.light["color"], dtype=np.float32)
+sun = world.sun
+if sun and sun.light:
+    light_dir = np.array(sun.light["direction"], dtype=np.float32)
+    light_dir /= np.linalg.norm(light_dir)
 
+    renderer.set_light(
+        position=sun.transform.position,
+        direction=light_dir,
+        ambient=sun.light.get("ambient_strength"),
+        color=sun.light["color"],
+        intensity=sun.light["intensity"],
+    )
 
 # ====================
 # Load mannequin (glTF)
@@ -178,7 +186,7 @@ while running:
     # -------------
     # Sync mannequin to player
     # -------------
-    mannequin_render_obj.transform.position = player.position.copy()
+    # mannequin_render_obj.transform.position = player.position.copy()
     # mannequin_render_obj.transform.rotation_y = player.yaw
 
     # Hide mannequin in first-person
@@ -187,6 +195,7 @@ while running:
     # -------------
     # Render passes
     # -------------
+    light_space = renderer.light_space_matrix()
 
     # Reflection camera
     ref_cam_pos = player.position.copy()
@@ -195,7 +204,6 @@ while running:
 
     # Shadow pass
     renderer.render_shadow_pass(
-        renderer.light_pos,
         scene_objects,
     )
 
@@ -216,14 +224,14 @@ while running:
     renderer.render_final_pass(
         player,
         camera,
-        renderer.light_space_matrix(renderer.light_pos),
+        light_space,
         ref_view,
         scene_objects,
     )
 
     # Debug grid (NICHT Teil der Scene)
     GL.glDisable(GL.GL_CULL_FACE)
-    renderer.draw_debug_grid(camera, WIDTH / HEIGHT, size=100.0)
+    renderer.draw_debug_grid(camera, WIDTH / HEIGHT, size=50.0)
     GL.glEnable(GL.GL_CULL_FACE)
 
     # -------------

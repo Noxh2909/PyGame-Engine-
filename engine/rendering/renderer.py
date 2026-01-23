@@ -224,20 +224,6 @@ class Renderer:
         
         self.create_fullscreen_quad()
         
-        # light projection matrix for shadow mapping
-        ortho_half_size = 10.0
-        near = 1.0
-        far = 5.0
-        self.light_projection = np.array(
-            [
-                [2.0 / (ortho_half_size * 2), 0.0, 0.0, 0.0],
-                [0.0, 2.0 / (ortho_half_size * 2), 0.0, 0.0],
-                [0.0, 0.0, -2.0 / (far - near), 0.0],
-                [0.0, 0.0, -(far + near) / (far - near), 1.0],
-            ],
-            dtype=np.float32,
-        )
-        
         # model matrix for the grid plane
         self.model = np.identity(4, dtype=np.float32)
         
@@ -483,11 +469,31 @@ class Renderer:
         GL.glBindVertexArray(0)
         return vao, len(vertices) // 8
     
+    
+    def set_light(self, direction, color, intensity, ambient=None, position=None):
+        """
+        Set the light parameters for the renderer.
+        :param self: The object itself
+        :param direction: Direction of the light as a 3D vector
+        :param color: Color of the light as a 3D vector
+        :param intensity: Intensity of the light as a float
+        :param position: Optional position of the light as a 3D vector
+        :param ambient: Optional ambient light strength as a float
+        """
+        
+        self.light_dir = np.array(direction, dtype=np.float32)
+        self.light_dir /= np.linalg.norm(self.light_dir)
+
+        self.light_color = np.array(color, dtype=np.float32)
+        self.light_intensity = intensity
+        self.light_ambient = ambient 
+        self.light_pos = position 
+    
 
     def create_ssao_buffers(self, width: int, height: int) -> dict:
         """Create framebuffers and textures needed for SSAO.
 
-        The SSAO pass samples positions and normals from a G‑buffer.  We store
+        The SSAO pass samples positions and normals from a G-buffer.  We store
         positions in view space, normals and a colour buffer (unused here
         but often useful).  An additional texture holds the SSAO
         occlusion factor and another stores a blurred version of that
@@ -643,7 +649,7 @@ class Renderer:
         
         :param self: The Renderer instance
         """
-        self.shadowsize = 16384
+        self.shadowsize = 4096
         self.depth_fbo, self.depth_texture = create_depth_map(self.shadowsize)
         self.ssao_data = self.create_ssao_buffers(self.width, self.height)
         
@@ -681,6 +687,7 @@ class Renderer:
         self.g_object_color_loc = GL.glGetUniformLocation(self.geometry_program, "objectColor")
 
         # Final shader uniforms
+        self.final_emissive_loc = GL.glGetUniformLocation(self.final_program, "u_is_emissive")
         self.final_model_loc = GL.glGetUniformLocation(self.final_program, "model")
         self.final_view_loc = GL.glGetUniformLocation(self.final_program, "view")
         self.final_proj_loc = GL.glGetUniformLocation(self.final_program, "projection")
@@ -688,22 +695,43 @@ class Renderer:
         self.final_light_pos_loc = GL.glGetUniformLocation(self.final_program, "lightPos")
         self.final_view_pos_loc = GL.glGetUniformLocation(self.final_program, "viewPos")
         self.final_light_color_loc = GL.glGetUniformLocation(self.final_program, "lightColor")
+        self.final_light_intensity_loc = GL.glGetUniformLocation(self.final_program, "u_lightIntensity")
+        self.final_ambient_strength_loc = GL.glGetUniformLocation(self.final_program, "u_ambientStrength")
         self.final_object_color_loc = GL.glGetUniformLocation(self.final_program, "objectColor")
         self.final_reflection_vp_loc = GL.glGetUniformLocation(self.final_program, "reflectionViewProj")
         self.final_reflect_tex_loc = GL.glGetUniformLocation(self.final_program, "reflectionTex")
         self.final_reflectivity_loc = GL.glGetUniformLocation(self.final_program, "reflectivity")
             
-    def light_space_matrix(self, light_pos: np.ndarray, target: np.ndarray = np.array([0.0, 0.0, 0.0], dtype=np.float32), up: np.ndarray = np.array([0.0, 1.0, 0.0], dtype=np.float32)) -> np.ndarray:
-        """Compute the light space transformation matrix for shadow mapping.
-
-        :param light_pos: Position of the light in world space.
-        :param target: Target point the light is looking at.
-        :param up: Up vector for the light's view matrix.
-        :return: 4x4 light space transformation matrix.
+            
+    def light_space_matrix(self):
         """
-        light_view = look_at(light_pos, target, up)
-        light_space = np.matmul(self.light_projection, light_view)
-        return light_space
+        Docstring für light_space_matrix
+        
+        :param self: The object itself
+        :return: The light space transformation matrix
+        :rtype: ndarray[_AnyShape, dtype[Any]]
+        """
+        light_pos = -self.light_dir * 20.0
+        target = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+
+        light_view = look_at(
+            light_pos,
+            target,
+            np.array([0.0, 1.0, 0.0], dtype=np.float32),
+        )
+
+        ortho_size = 20.0
+        near, far = 1.0, 80.0
+
+        light_proj = np.array([
+            [2/ortho_size, 0, 0, 0],
+            [0, 2/ortho_size, 0, 0],
+            [0, 0, -2/(far-near), 0],
+            [0, 0, -(far+near)/(far-near), 1],
+        ], dtype=np.float32)
+
+        return light_proj @ light_view
+    
     
     def render_reflection_pass(self, ref_view, ref_cam_pos, scene_objects: list[RenderObject]) -> None:
         """
@@ -736,15 +764,14 @@ class Renderer:
         GL.glCullFace(GL.GL_BACK)
         GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
         
-    def render_shadow_pass(self, light_pos: np.ndarray, scene_objects: list[RenderObject]) -> None:
+    def render_shadow_pass(self, scene_objects: list[RenderObject]) -> None:
         """
         Docstring for shadow_pass
         
         :param self: The object itself
-        :param light_pos: Position of the light source
         :param scene_objects: List of objects in the scene
         """
-        light_space = self.light_space_matrix(light_pos)
+        light_space = self.light_space_matrix()
         GL.glViewport(0, 0, self.shadowsize, self.shadowsize)
         GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self.depth_fbo)
         GL.glClear(GL.GL_DEPTH_BUFFER_BIT)
@@ -919,18 +946,19 @@ class Renderer:
         # -----------------------
         # Global uniforms
         # -----------------------
-        view = camera.get_view_matrix()
-
         GL.glUniformMatrix4fv(
             self.final_proj_loc, 1, GL.GL_TRUE, self.projection
         )
         GL.glUniformMatrix4fv(
-            self.final_view_loc, 1, GL.GL_TRUE, view
+            self.final_view_loc, 1, GL.GL_TRUE, camera.get_view_matrix()
         )
         GL.glUniformMatrix4fv(
             self.final_lightspace_loc, 1, GL.GL_TRUE, light_space_matrix
         )
 
+        # -----------------------
+        # Light uniforms
+        # -----------------------
         GL.glUniform3fv(
             self.final_light_pos_loc, 1, self.light_pos
         )
@@ -939,6 +967,12 @@ class Renderer:
         )
         GL.glUniform3fv(
             self.final_light_color_loc, 1, self.light_color
+        )
+        GL.glUniform1f(
+            self.final_light_intensity_loc, self.light_intensity
+        )
+        GL.glUniform1f(
+            self.final_ambient_strength_loc, self.light_ambient
         )
 
         # Reflection VP
@@ -1038,6 +1072,13 @@ class Renderer:
                     GL.glGetUniformLocation(self.final_program, "u_triplanar_scale"),
                     obj.material.texture_scale_value,
                 )
+                            
+            # emissive is per-object
+            emissive = getattr(obj.material, "is_emissive", False)
+            GL.glUniform1i(
+                self.final_emissive_loc,
+                1 if emissive else 0
+            )
 
             # reflectivity is per-object
             reflectivity = getattr(obj.material, "reflectivity", 0.0)
