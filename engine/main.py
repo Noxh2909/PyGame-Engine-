@@ -90,15 +90,12 @@ for obj in world.objects:
 
 sun = world.sun
 if sun and sun.light:
-    light_dir = np.array(sun.light["direction"], dtype=np.float32)
-    light_dir /= np.linalg.norm(light_dir)
-
     renderer.set_light(
-        position=sun.transform.position,
-        direction=light_dir,
-        ambient=sun.light.get("ambient_strength"),
+        position=sun.transform.position,            
+        direction=sun.light["direction"],           
         color=sun.light["color"],
         intensity=sun.light["intensity"],
+        ambient=sun.light.get("ambient_strength")
     )
 
 # ====================
@@ -238,6 +235,24 @@ while running:
     # Debug HUD
     # -------------
     renderer.render_debug_hud(clock, player)
+    
+    keys = pygame.key.get_pressed()
+    
+    sphere_speed = 0.1
+
+    if sun is not None:
+        if keys[pygame.K_UP]:
+            sun.transform.position[2] -= sphere_speed
+        if keys[pygame.K_DOWN]:
+            sun.transform.position[2] += sphere_speed
+        if keys[pygame.K_LEFT]:
+            sun.transform.position[0] -= sphere_speed
+        if keys[pygame.K_RIGHT]:
+            sun.transform.position[0] += sphere_speed
+        if keys[pygame.K_PAGEUP]:
+            sun.transform.position[1] += sphere_speed
+        if keys[pygame.K_PAGEDOWN]:
+            sun.transform.position[1] -= sphere_speed
     
     pygame.display.flip()
 

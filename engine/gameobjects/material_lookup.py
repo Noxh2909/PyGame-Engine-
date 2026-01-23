@@ -30,7 +30,7 @@ MATERIAL_TABLE = {
     "elian": lambda: Material(
         texture=load_texture(os.path.join(texture_dir, "elian.jpeg"))
     ),
-    "sun": lambda: Material(color=(1, 1, 1), emissive=True),
+    "sun": lambda: Material(color=(255, 255, 255), emissive=True),
 }
 
 
@@ -43,7 +43,9 @@ class Material:
         texture_scale_mode=None,
         texture_scale_value=None,
         reflectivity=0.0,
-        emissive_intensity=None
+        roughness=0.0,
+        shininess=4.0,
+        specular_strength=2.0,
     ):
         """
         color         : fallback color (vec3)
@@ -52,7 +54,9 @@ class Material:
         texture_scale_mode : optional scale mode for texture coordinates
         texture_scale_value : optional scale value for texture coordinates
         reflectivity : float [0.0 - 1.0]
-        emissive_intensity : optional float for emissive intensity
+        roughness : float [0.0 - 1.0]
+        shininess : optional float for shininess
+        specular_strength : optional float for specular strength
         """
         self.color = color
         self.texture = texture
@@ -60,8 +64,9 @@ class Material:
         self.texture_scale_mode = texture_scale_mode
         self.texture_scale_value = texture_scale_value
         self.reflectivity = reflectivity
-        self.emissive_intensity = emissive_intensity
-
+        self.roughness = roughness
+        self.shininess = shininess
+        self.specular_strength = specular_strength
 
 class MaterialRegistry:
     _materials: dict[str, Material] = {}

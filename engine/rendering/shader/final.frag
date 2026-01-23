@@ -7,9 +7,8 @@ in vec4 FragPosLightSpace;
 in vec4 ReflClipPos;
 uniform sampler2D shadowMap;
 uniform sampler2D ssaoTexture;
-// Planar reflection texture (rendered from mirrored camera)
 uniform sampler2D reflectionTex;
-// 0.0 = no reflection, 1.0 = full reflection
+uniform float roughness;
 uniform float reflectivity;
 uniform vec3 lightPos;
 uniform vec3 viewPos;
@@ -21,8 +20,15 @@ uniform bool u_is_emissive;
 uniform int u_texture_mode; // 0 = UV, 1 = triplanar
 uniform float u_lightIntensity;
 uniform float u_ambientStrength;
+uniform float u_specularStrength;
+uniform float u_shininess;
 uniform float u_triplanar_scale;
 
+// ----------------------
+// Shadow calculation
+// ----------------------
+
+// Function to calculate shadow using PCF
 float ShadowCalculation(vec4 fragPosLightSpace) {
   vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
   projCoords = projCoords * 0.5 + 0.5;
@@ -47,13 +53,23 @@ float ShadowCalculation(vec4 fragPosLightSpace) {
   return shadow / 9.0;
 }
 
+// Main function
 void main() {
-  vec3 baseColor;
+
+  // ----------------------
+  // emissive determination
+  // ----------------------
 
   if (u_is_emissive) {
     FragColor = vec4(objectColor, 1.0);
     return;
   }
+
+  // ----------------------
+  // Texture sampling
+  // ----------------------
+
+  vec3 baseColor;
 
   if (u_use_texture) {
     if (u_texture_mode == 0) {
@@ -80,6 +96,10 @@ void main() {
     baseColor = objectColor;
   }
 
+  // ----------------------
+  // Lighting calculations
+  // ----------------------
+
   vec2 screenUV = gl_FragCoord.xy / vec2(textureSize(ssaoTexture, 0));
   float ao = texture(ssaoTexture, screenUV).r;
   vec3 ambient = u_ambientStrength * ao * lightColor * u_lightIntensity;
@@ -89,8 +109,8 @@ void main() {
   vec3 diffuse = diff * lightColor * baseColor * u_lightIntensity;
   vec3 viewDir = normalize(viewPos - FragPos);
   vec3 reflectDir = reflect(-lightDir, norm);
-  float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0);
-  vec3 specular = spec * lightColor * u_lightIntensity;
+  float spec = pow(max(dot(viewDir, reflectDir), 0.0), u_shininess);
+  vec3 specular = spec * u_specularStrength * lightColor * u_lightIntensity;
   float shadow = ShadowCalculation(FragPosLightSpace);
 
   // Add attenuation based on distance
@@ -98,7 +118,40 @@ void main() {
   float attenuation =
       1.0 / (1.0 + 0.09 * distance +
              0.032 * distance * distance); // Quadratic attenuation
-  vec3 lighting = ambient + attenuation * (1.0 - shadow) *
-                                (diffuse + specular); // Apply shadow
-  FragColor = vec4(lighting * baseColor, 1.0);
+
+  vec3 lighting = ambient + attenuation * (1.0 - shadow) * (diffuse + specular);
+
+  // ----------------------
+  // Planar reflection
+  // ----------------------
+
+  vec3 finalColor = lighting * baseColor;
+
+  if (reflectivity > 0.0) {
+    // clip-space → UV
+    vec2 reflUV = ReflClipPos.xy / ReflClipPos.w;
+    reflUV = reflUV * 0.5 + 0.5;
+
+    // discard invalid UVs
+    if (reflUV.x >= 0.0 && reflUV.x <= 1.0 && reflUV.y >= 0.0 &&
+        reflUV.y <= 1.0) {
+
+      vec3 reflectionColor = texture(reflectionTex, reflUV).rgb;
+
+      // view-dependent Fresnel (cheap)
+      vec3 V = normalize(viewPos - FragPos);
+      vec3 N = normalize(Normal);
+      float fresnel = pow(1.0 - max(dot(V, N), 0.0), 5.0);
+
+      float reflectionStrength = reflectivity * fresnel * (1.0 - roughness);
+
+      finalColor =
+          mix(finalColor, reflectionColor, clamp(reflectionStrength, 0.0, 1.0));
+    }
+  }
+
+  // ----------------------
+  // Final output
+  // ----------------------
+  FragColor = vec4(finalColor, 1.0);
 }

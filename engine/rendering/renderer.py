@@ -181,7 +181,7 @@ class RenderObject:
         
         
 class Renderer:
-    def __init__(self, plane_size=100.0, width=1400, height=800, light_pos=(0.0, 0.0, 0.0), light_color=(1.0, 1.0, 1.0)):
+    def __init__(self, plane_size=100.0, width=1400, height=800):
         """
         Initializes the Renderer object.
 
@@ -190,10 +190,7 @@ class Renderer:
         """
         self.width = width
         self.height = height
-        self.light_pos = np.array(light_pos, dtype=np.float32)
-        self.light_color = np.array(light_color, dtype=np.float32)
         # Configure viewport and enable depth testing and face culling.
-        GL.glViewport(0, 0, self.width, self.height) 
         GL.glEnable(GL.GL_DEPTH_TEST)
         GL.glEnable(GL.GL_CULL_FACE)
         GL.glCullFace(GL.GL_BACK)
@@ -697,10 +694,13 @@ class Renderer:
         self.final_light_color_loc = GL.glGetUniformLocation(self.final_program, "lightColor")
         self.final_light_intensity_loc = GL.glGetUniformLocation(self.final_program, "u_lightIntensity")
         self.final_ambient_strength_loc = GL.glGetUniformLocation(self.final_program, "u_ambientStrength")
+        self.final_specular_strength_loc = GL.glGetUniformLocation(self.final_program, "u_specularStrength")
+        self.final_shininess_loc = GL.glGetUniformLocation(self.final_program, "u_shininess")
         self.final_object_color_loc = GL.glGetUniformLocation(self.final_program, "objectColor")
         self.final_reflection_vp_loc = GL.glGetUniformLocation(self.final_program, "reflectionViewProj")
         self.final_reflect_tex_loc = GL.glGetUniformLocation(self.final_program, "reflectionTex")
         self.final_reflectivity_loc = GL.glGetUniformLocation(self.final_program, "reflectivity")
+        self.final_roughness_loc = GL.glGetUniformLocation(self.final_program, "roughness")
             
             
     def light_space_matrix(self):
@@ -711,26 +711,25 @@ class Renderer:
         :return: The light space transformation matrix
         :rtype: ndarray[_AnyShape, dtype[Any]]
         """
-        light_pos = -self.light_dir * 20.0
-        target = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+        light_pos = -self.light_dir * 40.0
 
         light_view = look_at(
             light_pos,
-            target,
+            np.array([0.0, 0.0, 0.0], dtype=np.float32),
             np.array([0.0, 1.0, 0.0], dtype=np.float32),
         )
 
-        ortho_size = 20.0
-        near, far = 1.0, 80.0
+        ortho_size = 25.0
+        near, far = 1.0, 100.0
 
-        light_proj = np.array([
-            [2/ortho_size, 0, 0, 0],
-            [0, 2/ortho_size, 0, 0],
-            [0, 0, -2/(far-near), 0],
-            [0, 0, -(far+near)/(far-near), 1],
+        light_projection = np.array([
+            [2.0 / (ortho_size * 2), 0.0, 0.0, 0.0],
+            [0.0, 2.0 / (ortho_size * 2), 0.0, 0.0],
+            [0.0, 0.0, -2.0 / (far - near), 0.0],
+            [0.0, 0.0, - (far + near) / (far - near), 1.0],
         ], dtype=np.float32)
 
-        return light_proj @ light_view
+        return light_projection @ light_view
     
     
     def render_reflection_pass(self, ref_view, ref_cam_pos, scene_objects: list[RenderObject]) -> None:
@@ -751,7 +750,6 @@ class Renderer:
         GL.glUniformMatrix4fv(self.final_proj_loc, 1, GL.GL_TRUE, self.projection)
         GL.glUniformMatrix4fv(self.final_view_loc, 1, GL.GL_TRUE, ref_view)
         GL.glUniform3fv(self.final_view_pos_loc, 1, ref_cam_pos)
-        GL.glUniform1f(self.final_reflectivity_loc, 0.0)
 
         for obj in scene_objects:
             GL.glUniformMatrix4fv(
@@ -764,26 +762,29 @@ class Renderer:
         GL.glCullFace(GL.GL_BACK)
         GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
         
-    def render_shadow_pass(self, scene_objects: list[RenderObject]) -> None:
-        """
-        Docstring for shadow_pass
-        
-        :param self: The object itself
-        :param scene_objects: List of objects in the scene
-        """
-        light_space = self.light_space_matrix()
+    def render_shadow_pass(self, scene_objects):
         GL.glViewport(0, 0, self.shadowsize, self.shadowsize)
         GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self.depth_fbo)
         GL.glClear(GL.GL_DEPTH_BUFFER_BIT)
 
+        GL.glEnable(GL.GL_DEPTH_TEST)
+        GL.glEnable(GL.GL_CULL_FACE)
+        GL.glCullFace(GL.GL_FRONT)  
+        
         GL.glUseProgram(self.depth_program)
-        GL.glUniformMatrix4fv(self.depth_lightspace_loc, 1, GL.GL_TRUE, light_space)
+
+        light_space = self.light_space_matrix()
+        GL.glUniformMatrix4fv(
+            self.depth_lightspace_loc, 1, GL.GL_TRUE, light_space
+        )
 
         for obj in scene_objects:
             GL.glUniformMatrix4fv(
-                self.depth_model_loc, 1, GL.GL_TRUE, obj.transform.matrix())
+                self.depth_model_loc, 1, GL.GL_TRUE, obj.transform.matrix()
+            )
             obj.mesh.draw()
 
+        GL.glCullFace(GL.GL_BACK)    # ← State zurücksetzen
         GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
         
     def create_fullscreen_quad(self):
@@ -1072,6 +1073,34 @@ class Renderer:
                     GL.glGetUniformLocation(self.final_program, "u_triplanar_scale"),
                     obj.material.texture_scale_value,
                 )
+             
+            # sets the specular strength per-object in other words how intense the specular highlights are, specularity means how shiny a surface is
+            specular_strength = getattr(obj.material, "specular_strength")
+            GL.glUniform1f(
+                self.final_specular_strength_loc, 
+                specular_strength
+            )
+            
+            # sets the shininess per-object which affects the size and sharpness of the specular highlights
+            shininess = getattr(obj.material, "shininess")
+            GL.glUniform1f(
+                self.final_shininess_loc,
+                shininess
+            )
+            
+            # reflectivity is per-object
+            reflectivity = getattr(obj.material, "reflectivity")
+            GL.glUniform1f(
+                self.final_reflectivity_loc,
+                reflectivity
+            )
+            
+            # roughness is per-object
+            roughness = getattr(obj.material, "roughness")
+            GL.glUniform1f(
+                self.final_roughness_loc,
+                roughness
+            )
                             
             # emissive is per-object
             emissive = getattr(obj.material, "is_emissive", False)
@@ -1079,12 +1108,5 @@ class Renderer:
                 self.final_emissive_loc,
                 1 if emissive else 0
             )
-
-            # reflectivity is per-object
-            reflectivity = getattr(obj.material, "reflectivity", 0.0)
-            GL.glUniform1f(
-                self.final_reflectivity_loc,
-                reflectivity
-            )
-
+        
             obj.mesh.draw()    
