@@ -4,12 +4,8 @@ in vec3 FragPos;
 in vec3 Normal;
 in vec2 TexCoord;
 in vec4 FragPosLightSpace;
-in vec4 ReflClipPos;
 uniform sampler2D shadowMap;
 uniform sampler2D ssaoTexture;
-uniform sampler2D reflectionTex;
-uniform float roughness;
-uniform float reflectivity;
 uniform vec3 lightPos;
 uniform vec3 viewPos;
 uniform vec3 lightColor;
@@ -39,7 +35,7 @@ float ShadowCalculation(vec4 fragPosLightSpace) {
   float shadow = 0.0;
   vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
   float bias =
-      max(0.005 * (1.0 - dot(normalize(Normal), normalize(lightPos - FragPos))),
+      max(0.001 * (1.0 - dot(normalize(Normal), normalize(lightPos - FragPos))),
           0.0005);
 
   for (int x = -1; x <= 1; ++x)
@@ -122,36 +118,8 @@ void main() {
   vec3 lighting = ambient + attenuation * (1.0 - shadow) * (diffuse + specular);
 
   // ----------------------
-  // Planar reflection
-  // ----------------------
-
-  vec3 finalColor = lighting * baseColor;
-
-  if (reflectivity > 0.0) {
-    // clip-space → UV
-    vec2 reflUV = ReflClipPos.xy / ReflClipPos.w;
-    reflUV = reflUV * 0.5 + 0.5;
-
-    // discard invalid UVs
-    if (reflUV.x >= 0.0 && reflUV.x <= 1.0 && reflUV.y >= 0.0 &&
-        reflUV.y <= 1.0) {
-
-      vec3 reflectionColor = texture(reflectionTex, reflUV).rgb;
-
-      // view-dependent Fresnel (cheap)
-      vec3 V = normalize(viewPos - FragPos);
-      vec3 N = normalize(Normal);
-      float fresnel = pow(1.0 - max(dot(V, N), 0.0), 5.0);
-
-      float reflectionStrength = reflectivity * fresnel * (1.0 - roughness);
-
-      finalColor =
-          mix(finalColor, reflectionColor, clamp(reflectionStrength, 0.0, 1.0));
-    }
-  }
-
-  // ----------------------
   // Final output
   // ----------------------
+  vec3 finalColor = lighting * baseColor;
   FragColor = vec4(finalColor, 1.0);
 }

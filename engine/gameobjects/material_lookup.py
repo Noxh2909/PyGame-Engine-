@@ -42,8 +42,6 @@ class Material:
         emissive=False,
         texture_scale_mode=None,
         texture_scale_value=None,
-        reflectivity=0.0,
-        roughness=0.0,
         shininess=4.0,
         specular_strength=2.0,
     ):
@@ -53,8 +51,6 @@ class Material:
         emissive      : bool
         texture_scale_mode : optional scale mode for texture coordinates
         texture_scale_value : optional scale value for texture coordinates
-        reflectivity : float [0.0 - 1.0]
-        roughness : float [0.0 - 1.0]
         shininess : optional float for shininess
         specular_strength : optional float for specular strength
         """
@@ -63,8 +59,6 @@ class Material:
         self.emissive = emissive
         self.texture_scale_mode = texture_scale_mode
         self.texture_scale_value = texture_scale_value
-        self.reflectivity = reflectivity
-        self.roughness = roughness
         self.shininess = shininess
         self.specular_strength = specular_strength
 

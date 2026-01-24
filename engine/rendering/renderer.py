@@ -92,8 +92,8 @@ def create_depth_map(size: int) -> tuple[int, int]:
     )
     GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_NEAREST)
     GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_NEAREST)
-    GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_S, GL.GL_CLAMP_TO_BORDER)
-    GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_T, GL.GL_CLAMP_TO_BORDER)
+    GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_S, GL.GL_CLAMP_TO_EDGE)
+    GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_T, GL.GL_CLAMP_TO_EDGE)
     border_color = (1.0, 1.0, 1.0, 1.0)
     GL.glTexParameterfv(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_BORDER_COLOR, border_color) 
     depth_fbo = GL.glGenFramebuffers(1)
@@ -482,9 +482,10 @@ class Renderer:
         self.light_dir /= np.linalg.norm(self.light_dir)
 
         self.light_color = np.array(color, dtype=np.float32)
+        self.light_pos = position
+
         self.light_intensity = intensity
         self.light_ambient = ambient 
-        self.light_pos = position 
     
 
     def create_ssao_buffers(self, width: int, height: int) -> dict:
@@ -646,7 +647,7 @@ class Renderer:
         
         :param self: The Renderer instance
         """
-        self.shadowsize = 4096
+        self.shadowsize = 8192 # High-res shadow map for detailed shadows
         self.depth_fbo, self.depth_texture = create_depth_map(self.shadowsize)
         self.ssao_data = self.create_ssao_buffers(self.width, self.height)
         
@@ -703,24 +704,27 @@ class Renderer:
         self.final_roughness_loc = GL.glGetUniformLocation(self.final_program, "roughness")
             
             
-    def light_space_matrix(self):
+    def light_space_matrix(self, player) -> np.ndarray:
         """
         Docstring für light_space_matrix
         
         :param self: The object itself
+        :param player: The player object to center the light on
         :return: The light space transformation matrix
         :rtype: ndarray[_AnyShape, dtype[Any]]
         """
-        light_pos = -self.light_dir * 40.0
-
+        # light_dir = self.light_dir
+        light_pos = self.light_pos 
+        target = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+        
         light_view = look_at(
             light_pos,
-            np.array([0.0, 0.0, 0.0], dtype=np.float32),
+            target,
             np.array([0.0, 1.0, 0.0], dtype=np.float32),
         )
 
-        ortho_size = 25.0
-        near, far = 1.0, 100.0
+        ortho_size = 10.0       # Smaller coverage for interior rooms
+        near, far = 1.0, 20.0   # Reduced far plane for confined spaces
 
         light_projection = np.array([
             [2.0 / (ortho_size * 2), 0.0, 0.0, 0.0],
@@ -730,39 +734,9 @@ class Renderer:
         ], dtype=np.float32)
 
         return light_projection @ light_view
-    
-    
-    def render_reflection_pass(self, ref_view, ref_cam_pos, scene_objects: list[RenderObject]) -> None:
-        """
-        Docstring for reflection_pass
+
         
-        :param self: The object itself
-        :param ref_view: reflection view matrix
-        :param ref_cam_pos: reflection camera position
-        :param obj: The object to render
-        """
-        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self.ref_fbo)
-        GL.glViewport(0, 0, self.width, self.height)
-        GL.glClear(int(GL.GL_COLOR_BUFFER_BIT) | int(GL.GL_DEPTH_BUFFER_BIT))
-        GL.glCullFace(GL.GL_FRONT)
-
-        GL.glUseProgram(self.final_program)
-        GL.glUniformMatrix4fv(self.final_proj_loc, 1, GL.GL_TRUE, self.projection)
-        GL.glUniformMatrix4fv(self.final_view_loc, 1, GL.GL_TRUE, ref_view)
-        GL.glUniform3fv(self.final_view_pos_loc, 1, ref_cam_pos)
-
-        for obj in scene_objects:
-            GL.glUniformMatrix4fv(
-                self.final_model_loc, 1, GL.GL_TRUE, obj.transform.matrix()
-            )
-            GL.glUniform3f(self.final_object_color_loc, *obj.material.color)
-
-            obj.mesh.draw()
-
-        GL.glCullFace(GL.GL_BACK)
-        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
-        
-    def render_shadow_pass(self, scene_objects):
+    def render_shadow_pass(self, light_space_matrix, scene_objects) -> None:
         GL.glViewport(0, 0, self.shadowsize, self.shadowsize)
         GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self.depth_fbo)
         GL.glClear(GL.GL_DEPTH_BUFFER_BIT)
@@ -773,9 +747,8 @@ class Renderer:
         
         GL.glUseProgram(self.depth_program)
 
-        light_space = self.light_space_matrix()
         GL.glUniformMatrix4fv(
-            self.depth_lightspace_loc, 1, GL.GL_TRUE, light_space
+            self.depth_lightspace_loc, 1, GL.GL_TRUE, light_space_matrix
         )
 
         for obj in scene_objects:
@@ -786,6 +759,7 @@ class Renderer:
 
         GL.glCullFace(GL.GL_BACK)    # ← State zurücksetzen
         GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
+        
         
     def create_fullscreen_quad(self):
         """
@@ -920,7 +894,7 @@ class Renderer:
         GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
         
         
-    def render_final_pass(self, player, camera, light_space_matrix: np.ndarray, ref_view: np.ndarray, scene_objects: list[RenderObject]) -> None:
+    def render_final_pass(self, player, camera, light_space_matrix: np.ndarray, scene_objects: list[RenderObject]) -> None:
         """
         Final lighting pass.
 
@@ -933,7 +907,6 @@ class Renderer:
         :param player: the player object
         :param camera: active camera
         :param light_space_matrix: light projection * light view
-        :param ref_view: reflection view matrix
         :param scene_objects: all visible objects
         """
 
@@ -976,12 +949,6 @@ class Renderer:
             self.final_ambient_strength_loc, self.light_ambient
         )
 
-        # Reflection VP
-        refl_vp = self.projection @ ref_view
-        GL.glUniformMatrix4fv(
-            self.final_reflection_vp_loc, 1, GL.GL_TRUE, refl_vp
-        )
-
         # -----------------------
         # Bind textures
         # -----------------------
@@ -1001,11 +968,6 @@ class Renderer:
         GL.glUniform1i(
             GL.glGetUniformLocation(self.final_program, "ssaoTexture"), 1
         )
-
-        # Reflection texture
-        GL.glActiveTexture(GL.GL_TEXTURE2)
-        GL.glBindTexture(GL.GL_TEXTURE_2D, self.ref_tex)
-        GL.glUniform1i(self.final_reflect_tex_loc, 2)
 
         # -----------------------
         # Draw all objects
@@ -1086,20 +1048,6 @@ class Renderer:
             GL.glUniform1f(
                 self.final_shininess_loc,
                 shininess
-            )
-            
-            # reflectivity is per-object
-            reflectivity = getattr(obj.material, "reflectivity")
-            GL.glUniform1f(
-                self.final_reflectivity_loc,
-                reflectivity
-            )
-            
-            # roughness is per-object
-            roughness = getattr(obj.material, "roughness")
-            GL.glUniform1f(
-                self.final_roughness_loc,
-                roughness
             )
                             
             # emissive is per-object

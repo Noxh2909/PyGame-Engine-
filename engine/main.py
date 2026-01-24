@@ -192,15 +192,11 @@ while running:
     # -------------
     # Render passes
     # -------------
-    light_space = renderer.light_space_matrix()
-
-    # Reflection camera
-    ref_cam_pos = player.position.copy()
-    ref_cam_pos[1] = -ref_cam_pos[1]
-    ref_view = camera.get_view_matrix()
+    light_space = renderer.light_space_matrix(player)
 
     # Shadow pass
     renderer.render_shadow_pass(
+        light_space,
         scene_objects,
     )
 
@@ -210,19 +206,11 @@ while running:
         scene_objects,
     )
 
-    # Reflection pass
-    renderer.render_reflection_pass(
-        ref_view,
-        ref_cam_pos,
-        scene_objects,
-    )
-
     # Final lighting pass
     renderer.render_final_pass(
         player,
         camera,
         light_space,
-        ref_view,
         scene_objects,
     )
 
