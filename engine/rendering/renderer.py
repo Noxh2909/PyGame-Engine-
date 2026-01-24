@@ -79,32 +79,40 @@ def link_program(
     return program
 
 
-def create_depth_map(size: int) -> tuple[int, int]: 
-    """Create a framebuffer object and depth texture for shadow mapping.
-
-    :param size: Resolution of the square depth map.
-    :return: Tuple (framebuffer handle, depth texture handle).
-    """
-    depth_texture = GL.glGenTextures(1)
-    GL.glBindTexture(GL.GL_TEXTURE_2D, depth_texture)
-    GL.glTexImage2D(
-        GL.GL_TEXTURE_2D, 0, GL.GL_DEPTH_COMPONENT, size, size, 0, GL.GL_DEPTH_COMPONENT, GL.GL_FLOAT, None
-    )
-    GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_NEAREST)
-    GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_NEAREST)
-    GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_S, GL.GL_CLAMP_TO_EDGE)
-    GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_T, GL.GL_CLAMP_TO_EDGE)
-    border_color = (1.0, 1.0, 1.0, 1.0)
-    GL.glTexParameterfv(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_BORDER_COLOR, border_color) 
+def create_point_shadow_map(size: int):
     depth_fbo = GL.glGenFramebuffers(1)
+
+    depth_cubemap = GL.glGenTextures(1)
+    GL.glBindTexture(GL.GL_TEXTURE_CUBE_MAP, depth_cubemap)
+
+    for i in range(6):
+        GL.glTexImage2D(
+            int(GL.GL_TEXTURE_CUBE_MAP_POSITIVE_X)+ i,
+            0,
+            GL.GL_DEPTH_COMPONENT,
+            size,
+            size,
+            0,
+            GL.GL_DEPTH_COMPONENT,
+            GL.GL_FLOAT,
+            None
+        )
+
+    GL.glTexParameteri(GL.GL_TEXTURE_CUBE_MAP, GL.GL_TEXTURE_MIN_FILTER, GL.GL_NEAREST)
+    GL.glTexParameteri(GL.GL_TEXTURE_CUBE_MAP, GL.GL_TEXTURE_MAG_FILTER, GL.GL_NEAREST)
+    GL.glTexParameteri(GL.GL_TEXTURE_CUBE_MAP, GL.GL_TEXTURE_WRAP_S, GL.GL_CLAMP_TO_EDGE)
+    GL.glTexParameteri(GL.GL_TEXTURE_CUBE_MAP, GL.GL_TEXTURE_WRAP_T, GL.GL_CLAMP_TO_EDGE)
+    GL.glTexParameteri(GL.GL_TEXTURE_CUBE_MAP, GL.GL_TEXTURE_WRAP_R, GL.GL_CLAMP_TO_EDGE)
+
     GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, depth_fbo)
-    GL.glFramebufferTexture2D(GL.GL_FRAMEBUFFER, GL.GL_DEPTH_ATTACHMENT, GL.GL_TEXTURE_2D, depth_texture, 0)
+    GL.glFramebufferTexture(GL.GL_FRAMEBUFFER, GL.GL_DEPTH_ATTACHMENT, depth_cubemap, 0)
     GL.glDrawBuffer(GL.GL_NONE)
     GL.glReadBuffer(GL.GL_NONE)
-    if GL.glCheckFramebufferStatus(GL.GL_FRAMEBUFFER) != GL.GL_FRAMEBUFFER_COMPLETE:
-        raise RuntimeError("Depth framebuffer not complete")
+
+    assert GL.glCheckFramebufferStatus(GL.GL_FRAMEBUFFER) == GL.GL_FRAMEBUFFER_COMPLETE
     GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
-    return depth_fbo, depth_texture
+
+    return depth_fbo, depth_cubemap
 
 
 def perspective(fovy: float, aspect: float, znear: float, zfar: float) -> np.ndarray: 
@@ -146,6 +154,7 @@ PLANE_FRAGMENT_SHADER_SRC = load_shader("engine/rendering/shader/grid_plane.frag
 # Depth Shader for shadow mapping
 DEPTH_VERTEX_SHADER_SRC = load_shader("engine/rendering/shader/depth.vert")
 DEPTH_FRAGMENT_SHADER_SRC = load_shader("engine/rendering/shader/depth.frag")
+DEPTH_GEOMETRY_SHADER_SRC = load_shader("engine/rendering/shader/depth.geom")
 
 # Geometry Pass Shader for SSAO
 GEOMETRY_VERTEX_SHADER_SRC = load_shader("engine/rendering/shader/geometry.vert")
@@ -221,6 +230,8 @@ class Renderer:
         
         self.create_fullscreen_quad()
         
+        self.shadow_far = 25.0
+        
         # model matrix for the grid plane
         self.model = np.identity(4, dtype=np.float32)
         
@@ -260,7 +271,7 @@ class Renderer:
             PLANE_VERTEX_SHADER_SRC, PLANE_FRAGMENT_SHADER_SRC
         )   
         self.depth_program = link_program(
-            DEPTH_VERTEX_SHADER_SRC, DEPTH_FRAGMENT_SHADER_SRC
+            DEPTH_VERTEX_SHADER_SRC, DEPTH_FRAGMENT_SHADER_SRC, DEPTH_GEOMETRY_SHADER_SRC
         )
         self.geometry_program = link_program(
             GEOMETRY_VERTEX_SHADER_SRC, GEOMETRY_FRAGMENT_SHADER_SRC
@@ -647,8 +658,8 @@ class Renderer:
         
         :param self: The Renderer instance
         """
-        self.shadowsize = 8192 # High-res shadow map for detailed shadows
-        self.depth_fbo, self.depth_texture = create_depth_map(self.shadowsize)
+        self.shadowsize = 1024 # High-res shadow map for detailed shadows
+        self.depth_fbo, self.depth_texture = create_point_shadow_map(self.shadowsize)
         self.ssao_data = self.create_ssao_buffers(self.width, self.height)
         
         self.ref_tex = GL.glGenTextures(1)
@@ -676,8 +687,9 @@ class Renderer:
         
         # Depth program uniforms
         self.depth_model_loc = GL.glGetUniformLocation(self.depth_program, "model")
-        self.depth_lightspace_loc = GL.glGetUniformLocation(self.depth_program, "lightSpaceMatrix")
-
+        self.depth_light_pos_loc = GL.glGetUniformLocation(self.depth_program, "lightPos")
+        self.depth_far_plane_loc = GL.glGetUniformLocation(self.depth_program, "far_plane")
+        
         # G-buffer program uniforms
         self.g_model_loc = GL.glGetUniformLocation(self.geometry_program, "model")
         self.g_view_loc = GL.glGetUniformLocation(self.geometry_program, "view")
@@ -704,52 +716,53 @@ class Renderer:
         self.final_roughness_loc = GL.glGetUniformLocation(self.final_program, "roughness")
             
             
-    def light_space_matrix(self, player) -> np.ndarray:
-        """
-        Docstring für light_space_matrix
-        
-        :param self: The object itself
-        :param player: The player object to center the light on
-        :return: The light space transformation matrix
-        :rtype: ndarray[_AnyShape, dtype[Any]]
-        """
-        # light_dir = self.light_dir
-        light_pos = self.light_pos 
-        target = np.array([0.0, 0.0, 0.0], dtype=np.float32)
-        
-        light_view = look_at(
-            light_pos,
-            target,
-            np.array([0.0, 1.0, 0.0], dtype=np.float32),
+    def point_light_matrices(self, light_pos=None, near_plane=0.05, far_plane=None) -> list:
+        if light_pos is None:
+            light_pos = self.light_pos
+        if far_plane is None:
+            far_plane = self.shadow_far
+            
+        proj = perspective(
+            math.radians(90.0),
+            1.0,
+            near_plane,
+            far_plane
         )
 
-        ortho_size = 10.0       # Smaller coverage for interior rooms
-        near, far = 1.0, 20.0   # Reduced far plane for confined spaces
+        matrices = []
 
-        light_projection = np.array([
-            [2.0 / (ortho_size * 2), 0.0, 0.0, 0.0],
-            [0.0, 2.0 / (ortho_size * 2), 0.0, 0.0],
-            [0.0, 0.0, -2.0 / (far - near), 0.0],
-            [0.0, 0.0, - (far + near) / (far - near), 1.0],
-        ], dtype=np.float32)
+        matrices.append(proj @ look_at(light_pos, light_pos + np.array([ 1, 0, 0]), np.array([0,-1, 0])))
+        matrices.append(proj @ look_at(light_pos, light_pos + np.array([-1, 0, 0]), np.array([0,-1, 0])))
+        matrices.append(proj @ look_at(light_pos, light_pos + np.array([ 0, 1, 0]), np.array([0, 0, 1])))
+        matrices.append(proj @ look_at(light_pos, light_pos + np.array([ 0,-1, 0]), np.array([0, 0,-1])))
+        matrices.append(proj @ look_at(light_pos, light_pos + np.array([ 0, 0, 1]), np.array([0,-1, 0])))
+        matrices.append(proj @ look_at(light_pos, light_pos + np.array([ 0, 0,-1]), np.array([0,-1, 0])))
 
-        return light_projection @ light_view
+        return matrices
 
         
-    def render_shadow_pass(self, light_space_matrix, scene_objects) -> None:
+    def render_shadow_pass(self, scene_objects) -> None:
         GL.glViewport(0, 0, self.shadowsize, self.shadowsize)
         GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self.depth_fbo)
         GL.glClear(GL.GL_DEPTH_BUFFER_BIT)
 
         GL.glEnable(GL.GL_DEPTH_TEST)
         GL.glEnable(GL.GL_CULL_FACE)
-        GL.glCullFace(GL.GL_FRONT)  
-        
+        GL.glCullFace(GL.GL_FRONT)
+
         GL.glUseProgram(self.depth_program)
 
-        GL.glUniformMatrix4fv(
-            self.depth_lightspace_loc, 1, GL.GL_TRUE, light_space_matrix
-        )
+        # --- Point light shadow matrices ---
+        shadow_mats = self.point_light_matrices()
+
+        for i, mat in enumerate(shadow_mats):
+            loc = GL.glGetUniformLocation(
+                self.depth_program, f"shadowMatrices[{i}]"
+            )
+            GL.glUniformMatrix4fv(loc, 1, GL.GL_TRUE, mat)
+
+        GL.glUniform3fv(self.depth_light_pos_loc, 1, self.light_pos)
+        GL.glUniform1f(self.depth_far_plane_loc, self.shadow_far)
 
         for obj in scene_objects:
             GL.glUniformMatrix4fv(
@@ -757,7 +770,7 @@ class Renderer:
             )
             obj.mesh.draw()
 
-        GL.glCullFace(GL.GL_BACK)    # ← State zurücksetzen
+        GL.glCullFace(GL.GL_BACK)
         GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
         
         
@@ -894,7 +907,7 @@ class Renderer:
         GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
         
         
-    def render_final_pass(self, player, camera, light_space_matrix: np.ndarray, scene_objects: list[RenderObject]) -> None:
+    def render_final_pass(self, player, camera, scene_objects: list[RenderObject]) -> None:
         """
         Final lighting pass.
 
@@ -906,7 +919,6 @@ class Renderer:
 
         :param player: the player object
         :param camera: active camera
-        :param light_space_matrix: light projection * light view
         :param scene_objects: all visible objects
         """
 
@@ -925,9 +937,6 @@ class Renderer:
         )
         GL.glUniformMatrix4fv(
             self.final_view_loc, 1, GL.GL_TRUE, camera.get_view_matrix()
-        )
-        GL.glUniformMatrix4fv(
-            self.final_lightspace_loc, 1, GL.GL_TRUE, light_space_matrix
         )
 
         # -----------------------
@@ -948,6 +957,10 @@ class Renderer:
         GL.glUniform1f(
             self.final_ambient_strength_loc, self.light_ambient
         )
+        GL.glUniform1f(
+            GL.glGetUniformLocation(self.final_program, "far_plane"),
+            self.shadow_far
+        )
 
         # -----------------------
         # Bind textures
@@ -955,9 +968,9 @@ class Renderer:
 
         # Shadow map
         GL.glActiveTexture(GL.GL_TEXTURE0)
-        GL.glBindTexture(GL.GL_TEXTURE_2D, self.depth_texture)
+        GL.glBindTexture(GL.GL_TEXTURE_CUBE_MAP, self.depth_texture)
         GL.glUniform1i(
-            GL.glGetUniformLocation(self.final_program, "shadowMap"), 0
+            GL.glGetUniformLocation(self.final_program, "depthMap"), 0
         )
 
         # SSAO (blurred)

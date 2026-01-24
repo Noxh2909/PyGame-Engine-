@@ -85,7 +85,7 @@
         "specular_strength": 0.0
       },
       "position": [-1, 8, 3],
-      "scale": [0.0, 0.0, 0.0],
+      "scale": [1.0, 1.0, 1.0],
       "light": {
         "ambient_strength": 0.3,
         "direction": [0.0, 1.0, 0.0],

@@ -3,10 +3,7 @@ out vec4 FragColor;
 in vec3 FragPos;
 in vec3 Normal;
 in vec2 TexCoord;
-in vec4 FragPosLightSpace;
-uniform sampler2D shadowMap;
 uniform sampler2D ssaoTexture;
-uniform vec3 lightPos;
 uniform vec3 viewPos;
 uniform vec3 lightColor;
 uniform vec3 objectColor;
@@ -19,34 +16,51 @@ uniform float u_ambientStrength;
 uniform float u_specularStrength;
 uniform float u_shininess;
 uniform float u_triplanar_scale;
+uniform samplerCube depthMap;
+uniform vec3 lightPos;
+uniform float far_plane;
 
 // ----------------------
 // Shadow calculation
 // ----------------------
 
-// Function to calculate shadow using PCF
-float ShadowCalculation(vec4 fragPosLightSpace) {
-  vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
-  projCoords = projCoords * 0.5 + 0.5;
+float ShadowCalculation(vec3 fragPos)
+{
+    vec3 fragToLight = fragPos - lightPos;
+    float currentDepth = length(fragToLight);
 
-  if (projCoords.z > 1.0)
-    return 0.0;
+    // normal-based bias (reduces acne)
+    vec3 N = normalize(Normal);
+    vec3 L = normalize(fragToLight);
+    float bias = max(0.05 * (1.0 - dot(N, L)), 0.005);
 
-  float shadow = 0.0;
-  vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
-  float bias =
-      max(0.001 * (1.0 - dot(normalize(Normal), normalize(lightPos - FragPos))),
-          0.0005);
+    // simple PCF over cubemap
+    float shadow = 0.0;
+    int samples = 20;
+    float diskRadius = 0.25;
 
-  for (int x = -1; x <= 1; ++x)
-    for (int y = -1; y <= 1; ++y) {
-      float pcfDepth =
-          texture(shadowMap, projCoords.xy + vec2(x, y) * texelSize).r;
+    for (int i = 0; i < samples; ++i)
+    {
+        // predefined offset directions (hardcoded pattern)
+        vec3 offset = normalize(vec3(
+            sin(float(i) * 12.9898),
+            cos(float(i) * 78.233),
+            sin(float(i) * 37.719)
+        ));
 
-      shadow += (projCoords.z - bias > pcfDepth) ? 1.0 : 0.0;
+        float closestDepth = texture(
+            depthMap,
+            fragToLight + offset * diskRadius
+        ).r;
+
+        closestDepth *= far_plane;
+
+        if (currentDepth - bias > closestDepth)
+            shadow += 1.0;
     }
 
-  return shadow / 9.0;
+    shadow /= float(samples);
+    return shadow;
 }
 
 // Main function
@@ -107,7 +121,7 @@ void main() {
   vec3 reflectDir = reflect(-lightDir, norm);
   float spec = pow(max(dot(viewDir, reflectDir), 0.0), u_shininess);
   vec3 specular = spec * u_specularStrength * lightColor * u_lightIntensity;
-  float shadow = ShadowCalculation(FragPosLightSpace);
+  float shadow = ShadowCalculation(FragPos);
 
   // Add attenuation based on distance
   float distance = length(lightPos - FragPos);

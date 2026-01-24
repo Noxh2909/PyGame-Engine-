@@ -192,11 +192,11 @@ while running:
     # -------------
     # Render passes
     # -------------
-    light_space = renderer.light_space_matrix(player)
+
+    light_space_matrix = renderer.point_light_matrices()
 
     # Shadow pass
     renderer.render_shadow_pass(
-        light_space,
         scene_objects,
     )
 
@@ -210,7 +210,6 @@ while running:
     renderer.render_final_pass(
         player,
         camera,
-        light_space,
         scene_objects,
     )
 
