@@ -80,6 +80,12 @@ def link_program(
 
 
 def create_point_shadow_map(size: int):
+    """
+    Docstring für create_point_shadow_map
+    
+    :param size: The size (width and height) of the shadow map texture
+    :type size: int
+    """
     depth_fbo = GL.glGenFramebuffers(1)
 
     depth_cubemap = GL.glGenTextures(1)
@@ -717,6 +723,16 @@ class Renderer:
             
             
     def point_light_matrices(self, light_pos=None, near_plane=0.05, far_plane=None) -> list:
+        """
+        Docstring für point_light_matrices
+        
+        :param self: Beschreibung
+        :param light_pos: position of the light source
+        :param near_plane: near clipping plane distance
+        :param far_plane: far clipping plane distance
+        :return: list of transformation matrices for point light shadow mapping
+        :rtype: list[Any]
+        """
         if light_pos is None:
             light_pos = self.light_pos
         if far_plane is None:
@@ -742,6 +758,12 @@ class Renderer:
 
         
     def render_shadow_pass(self, scene_objects) -> None:
+        """
+        Docstring für render_shadow_pass
+        
+        :param self: The object itself
+        :param scene_objects: List of objects in the scene
+        """
         GL.glViewport(0, 0, self.shadowsize, self.shadowsize)
         GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self.depth_fbo)
         GL.glClear(GL.GL_DEPTH_BUFFER_BIT)

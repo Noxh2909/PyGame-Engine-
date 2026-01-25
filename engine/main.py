@@ -183,7 +183,7 @@ while running:
     # -------------
     # Sync mannequin to player
     # -------------
-    # mannequin_render_obj.transform.position = player.position.copy()
+    mannequin_render_obj.transform.position = player.position.copy()
     # mannequin_render_obj.transform.rotation_y = player.yaw
 
     # Hide mannequin in first-person
