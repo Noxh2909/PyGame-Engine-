@@ -1,148 +1,165 @@
-import pygame
-from OpenGL.GL import (
-    glClear,
-    glClearColor,
-    GL_COLOR_BUFFER_BIT,
-    GL_DEPTH_BUFFER_BIT,
-    glViewport,
-    glGetString,
-    GL_VERSION,
-    glEnable,
-    GL_DEPTH_TEST,
-)
-
-from gameobjects.material_lookup import Material
-from gameobjects.texture import load_texture
 import os
+import pygame
+import numpy as np
+from OpenGL import GL
 
-from gameobjects.mesh import Mesh  # adjust if your Mesh class lives elsewhere
-
-from gameobjects.player.mannequin.mannequin import Mannequin
-
-from rendering.renderer import Renderer
-from input import InputState
-from debug import DebugHUD
-from physics.world_physics import PhysicsWorld
+from rendering.renderer import Renderer, RenderObject
 from world import World
-from gameobjects.object import GameObject
-from gameobjects.transform import Transform
-from gameobjects.collider.aabb import AABBCollider
+from physics.world_physics import PhysicsWorld
+from input import InputState
+
 from gameobjects.player.player import Player
 from gameobjects.player.camera import Camera
+from gameobjects.transform import Transform
+from gameobjects.material_lookup import Material
+from gameobjects.mesh import Mesh
 from gameobjects.glb_loader import GLBLoader
+from gameobjects.collider.aabb import AABBCollider
+from gameobjects.texture import Texture
+from gameobjects.object import GameObject
+from gameobjects.vertec import plane_vertices
 
-# --------------------
-# Pygame / OpenGL setup
-# --------------------
+
+# ====================
+# Pygame / OpenGL init
+# ====================
 
 pygame.init()
 pygame.display.set_caption("3D Engine")
 
-# OpenGL 3.3 Corej
 pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MAJOR_VERSION, 3)
 pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MINOR_VERSION, 3)
 pygame.display.gl_set_attribute(
     pygame.GL_CONTEXT_PROFILE_MASK, pygame.GL_CONTEXT_PROFILE_CORE
 )
 
-width, height = 1400, 800
-pygame.display.set_mode((width, height), pygame.OPENGL | pygame.DOUBLEBUF)
-glViewport(0, 0, width, height)
+WIDTH, HEIGHT = 1400, 800
+pygame.display.set_mode((WIDTH, HEIGHT), pygame.OPENGL | pygame.DOUBLEBUF)
+GL.glViewport(0, 0, WIDTH, HEIGHT)
 
 pygame.mouse.set_visible(False)
 pygame.event.set_grab(True)
 pygame.mouse.get_rel()
 
-version = glGetString(GL_VERSION)
+version = GL.glGetString(GL.GL_VERSION)
 if version:
     print("OpenGL:", version.decode())
 
-glEnable(GL_DEPTH_TEST)
 
-# --------------------
-# Engine objects
-# --------------------
+# ====================
+# Core engine objects
+# ====================
 
-player = Player()
+clock = pygame.time.Clock()
 input_state = InputState()
-renderer = Renderer()
-debug = DebugHUD((width, height))
 physics = PhysicsWorld()
+player = Player()
 camera = Camera(player, physics)
+renderer = Renderer(width=WIDTH, height=HEIGHT)
 world = World("engine/world_gen.json")
 
-# --------------------
-# Static mannequin (glTF / .glb)
-# --------------------
+# ====================
+# Static Plane
+# ====================
 
-loader = GLBLoader("assets/models/idle.glb")
-gltf_data = loader.load_first_mesh()
-
-vertices = gltf_data["vertices"]
-indices = gltf_data["indices"]
-albedo_image = gltf_data["albedo"]
-
-mannequin_mesh = Mesh(vertices, indices)
-mannequin_height = 1.8  # reale Körperhöhe
-
-# --- create material (upload albedo texture) ---
-mannequin_material = Material(color=(1.0, 1.0, 1.0))
-
-if albedo_image is not None:
-    temp_dir = "engine/gameobjects/assets/skins"
-    os.makedirs(temp_dir, exist_ok=True)
-    temp_path = os.path.join(temp_dir, "mannequin_albedo.png")
-
-    albedo_image.save(temp_path)
-    mannequin_material.texture = load_texture(temp_path)
-
-# --- create mannequin ---
-static_mannequin = Mannequin(
-    player=player,
-    body_mesh=mannequin_mesh,
-    height=mannequin_height,
+# Create Physics Plane
+plane_game_object = GameObject(
+    mesh=None,
+    transform=Transform(position=(0.0, 0.0, 0.0)),
+    material=None,
+    collider=AABBCollider(size=(1000.0, 0.0, 1000.0))
 )
 
-# attach material
-static_mannequin.material = mannequin_material
+physics.add_static(plane_game_object)
 
-# --------------------
-# Hardcoded world objects
-# --------------------
+# Create Render Plane
+plane_mesh = Mesh(plane_vertices)
 
-ground_plane = GameObject(
-    mesh=None,  # no rendering mesh
-    material=None,  # no material
-    transform=Transform(position=(0, 0, 0), scale=(100000, 0.0, 100000)),
-    collider=AABBCollider(size=(1000, 0.0, 1000)),
-)
-
-physics.add_static(ground_plane)
-
-sun = world.sun
-if sun is not None and sun.light is not None:
-    renderer.set_light(
-        position=sun.transform.position,
-        color=sun.light.get("color"),
-        intensity=sun.light.get("intensity"),
-    )
-
-# --------------------
-# Visual cube ONLY
-# --------------------
+# ====================
+# Register world colliders
+# ====================
 
 for obj in world.objects:
     if obj.collider is not None:
         physics.add_static(obj)
 
-clock = pygame.time.Clock()
+
+# ====================
+# Sun / Light
+# ====================
+
+sun = world.sun
+if sun and sun.light:
+    renderer.set_light(
+        position=sun.transform.position,            
+        direction=sun.light["direction"],           
+        color=sun.light["color"],
+        intensity=sun.light["intensity"],
+        ambient=sun.light.get("ambient_strength")
+    )
+
+# ====================
+# Load mannequin (glTF)
+# ====================
+
+loader = GLBLoader("assets/models/idle.glb")
+gltf = loader.load_first_mesh()
+
+mannequin_mesh = Mesh(gltf["vertices"], gltf["indices"])
+
+mannequin_material = Material(color=(1.0, 1.0, 1.0))
+
+if gltf["albedo"] is not None:
+    temp_dir = "assets/skins"
+    os.makedirs(temp_dir, exist_ok=True)
+    albedo_path = os.path.join(temp_dir, "mannequin_albedo.png")
+    gltf["albedo"].save(albedo_path)
+
+    from gameobjects.texture import Texture
+    mannequin_material.texture = Texture.load_texture(albedo_path)
+
+
+mannequin_render_obj = RenderObject(
+    mesh=mannequin_mesh,
+    transform=Transform(),
+    material=mannequin_material,
+)
+
+
+# ====================
+# Scene object list
+# ====================
+
+scene_objects: list[RenderObject] = []
+
+for obj in world.objects:
+    if obj.mesh is not None:
+        scene_objects.append(
+            RenderObject(
+                mesh=obj.mesh,
+                transform=obj.transform,
+                material=obj.material,
+            )
+        )
+
+# Player mannequin is part of the render scene
+scene_objects.append(mannequin_render_obj)
+
+
+# ====================
+# Main Loop
+# ====================
+
 running = True
 first_person = True
 camera.third_person = False
 
 while running:
-    dt = clock.tick(240) / 1000.0
+    dt = clock.tick(120) / 1000.0
 
+    # -------------
+    # Events
+    # -------------
     for e in pygame.event.get():
         if e.type == pygame.QUIT:
             running = False
@@ -156,36 +173,63 @@ while running:
         first_person = not first_person
         camera.third_person = not first_person
 
-    # store previous position for physics (ground / wall detection)
+    # -------------
+    # Player + Physics
+    # -------------
     player.prev_position = player.position.copy()
-
     player.process_keyboard(actions, dt)
     physics.step(dt, player)
 
-    # ---------- SSAO Phase A: Normal + Depth pass ----------
-    renderer.render_normals(world.objects, camera, width / height)
-    renderer.render_ssao(camera, width, height)
+    # -------------
+    # Sync mannequin to player
+    # -------------
+    mannequin_render_obj.transform.position = player.position.copy()
 
-    # ---------- Normal render pass ----------
-    glClearColor(0.05, 0.05, 0.08, 1.0)
-    glClear(int(GL_COLOR_BUFFER_BIT) | int(GL_DEPTH_BUFFER_BIT))
+    # -------------
+    # Render passes
+    # -------------
+    light_space_matrix = renderer.point_light_matrices()
 
-    renderer.draw_plane(camera, width / height)
-    for obj in world.objects:
-        if obj.mesh is not None:
-            renderer.draw_object(obj, camera, width / height)
+    # Shadow pass
+    renderer.render_shadow_pass(scene_objects)
 
-    # --------------------
-    # Draw player mannequin (third-person / debug)
-    # --------------------
+    # SSAO pass
+    renderer.render_ssao_pass(camera, scene_objects)
 
-    # if not first_person and capsule_mesh is not None:
-    #     mannequin.draw(renderer.object_program)
+    # Final lighting pass
+    renderer.render_final_pass(player, camera, scene_objects)
+    
+    # Debug grid
+    renderer.draw_debug_grid(camera, WIDTH / HEIGHT, size=50.0)
+    
+    # Debug HUD
+    renderer.render_debug_hud(clock, player)
+    
+    # Bloom pass
+    renderer.render_bloom_pass()
+    
+    # -------------
+    # Update display
+    # -------------
+    
+    keys = pygame.key.get_pressed()
+    
+    sphere_speed = 0.1
 
-    # if not first_person:
-    renderer.draw_object(static_mannequin, camera, width / height)
-
-    debug.draw(clock, player)
+    if sun is not None:
+        if keys[pygame.K_UP]:
+            sun.transform.position[2] -= sphere_speed
+        if keys[pygame.K_DOWN]:
+            sun.transform.position[2] += sphere_speed
+        if keys[pygame.K_LEFT]:
+            sun.transform.position[0] -= sphere_speed
+        if keys[pygame.K_RIGHT]:
+            sun.transform.position[0] += sphere_speed
+        if keys[pygame.K_PAGEUP]:
+            sun.transform.position[1] += sphere_speed
+        if keys[pygame.K_PAGEDOWN]:
+            sun.transform.position[1] -= sphere_speed
+    
     pygame.display.flip()
 
 pygame.quit()

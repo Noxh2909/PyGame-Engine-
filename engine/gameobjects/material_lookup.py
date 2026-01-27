@@ -1,8 +1,8 @@
-from gameobjects.texture import load_texture
+from gameobjects.texture import Texture
 import os
 
 ENGINE_DIR = os.path.dirname(os.path.dirname(__file__))  # .../pygame/engine
-PROJECT_ROOT = os.path.dirname(ENGINE_DIR)  # .../pygame
+PROJECT_ROOT = os.path.dirname(ENGINE_DIR)               # .../pygame
 
 texture_dir = os.path.join(PROJECT_ROOT, "assets", "textures")
 
@@ -12,25 +12,25 @@ if not os.path.isdir(texture_dir):
 MATERIAL_TABLE = {
     "white": lambda: Material(color=(1, 1, 1)),
     "wood": lambda: Material(
-        texture=load_texture(os.path.join(texture_dir, "wood_wall.jpg"))
+        texture=Texture.load_texture(os.path.join(texture_dir, "wood_wall.jpg"))
     ),
     "marble": lambda: Material(
-        texture=load_texture(os.path.join(texture_dir, "marble_floor.jpg"))
+        texture=Texture.load_texture(os.path.join(texture_dir, "marble_floor.jpg"))
     ),
     "ocean": lambda: Material(
-        texture=load_texture(os.path.join(texture_dir, "ocean.jpg"))
+        texture=Texture.load_texture(os.path.join(texture_dir, "ocean.jpg"))
     ),
     "destiny": lambda: Material(
-        texture=load_texture(os.path.join(texture_dir, "destiny2.jpeg"))
+        texture=Texture.load_texture(os.path.join(texture_dir, "destiny2.jpeg"))
     ),
     "yasu": lambda: Material(
-        texture=load_texture(os.path.join(texture_dir, "yasu.jpeg"))
+        texture=Texture.load_texture(os.path.join(texture_dir, "yasu.jpeg"))
     ),
-    "js": lambda: Material(texture=load_texture(os.path.join(texture_dir, "js.jpeg"))),
+    "js": lambda: Material(texture=Texture.load_texture(os.path.join(texture_dir, "js.jpeg"))),
     "elian": lambda: Material(
-        texture=load_texture(os.path.join(texture_dir, "elian.jpeg"))
+        texture=Texture.load_texture(os.path.join(texture_dir, "elian.jpeg"))
     ),
-    "sun": lambda: Material(color=(1, 1, 1), emissive=True),
+    "sun": lambda: Material(color=(255, 255, 255), emissive=True),
 }
 
 
@@ -42,6 +42,8 @@ class Material:
         emissive=False,
         texture_scale_mode=None,
         texture_scale_value=None,
+        shininess=48.0,
+        specular_strength=1.0,
     ):
         """
         color         : fallback color (vec3)
@@ -49,13 +51,16 @@ class Material:
         emissive      : bool
         texture_scale_mode : optional scale mode for texture coordinates
         texture_scale_value : optional scale value for texture coordinates
+        shininess : optional float for shininess
+        specular_strength : optional float for specular strength
         """
         self.color = color
         self.texture = texture
         self.emissive = emissive
         self.texture_scale_mode = texture_scale_mode
         self.texture_scale_value = texture_scale_value
-
+        self.shininess = shininess
+        self.specular_strength = specular_strength
 
 class MaterialRegistry:
     _materials: dict[str, Material] = {}

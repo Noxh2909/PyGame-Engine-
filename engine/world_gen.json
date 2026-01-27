@@ -33,16 +33,6 @@
     {
       "mesh": "cube",
       "material": {
-        "name": "yasu",
-        "texture_scale_mode": "default"
-      },
-      "position": [-1, 6.0, 7.7],
-      "scale": [3, 3, 0.01],
-      "collider": [0, 0, 0]
-    },
-    {
-      "mesh": "cube",
-      "material": {
         "name": "marble",
         "texture_scale_mode": "default"
       },
@@ -54,7 +44,9 @@
       "mesh": "cube",
       "material": {
         "name": "marble",
-        "texture_scale_mode": "default"
+        "texture_scale_mode": "default",
+        "shininess": 64.0,
+        "specular_strength": 0.9
       },
       "position": [-1, 0, 3],
       "scale": [10, 0.5, 10],
@@ -62,13 +54,19 @@
     },
     {
       "mesh": "sphere",
-      "material": "sun",
+      "material": {
+        "name": "sun",
+        "is_emissive": true,
+        "shininess": 0.0,
+        "specular_strength": 0.0
+      },
       "position": [-1, 8, 3],
-      "scale": [1, 1, 1],
-      "collider": [1.5, 1.5, 1.5],
+      "scale": [1.0, 1.0, 1.0],
       "light": {
-        "color": [1.0, 0.75, 0.55],
-        "intensity": 100.0
+        "ambient_strength": 0.3,
+        "direction": [0.0, 1.0, 0.0],
+        "color": [1.0, 0.95, 0.85],
+        "intensity": 1.0
       }
     }
   ]
