@@ -143,7 +143,7 @@ for obj in world.objects:
         )
 
 # Player mannequin is part of the render scene
-scene_objects.append(mannequin_render_obj)
+# scene_objects.append(mannequin_render_obj)
 
 
 # ====================
@@ -183,7 +183,7 @@ while running:
     # -------------
     # Sync mannequin to player
     # -------------
-    mannequin_render_obj.transform.position = player.position.copy()
+    # mannequin_render_obj.transform.position = player.position.copy()
 
     # -------------
     # Render passes
