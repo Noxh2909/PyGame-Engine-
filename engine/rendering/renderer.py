@@ -4,6 +4,7 @@ import random
 from typing import Optional
 import numpy as np
 from OpenGL import GL
+import json
 import pygame
 
 from gameobjects.player.player import look_at
@@ -145,6 +146,7 @@ def perspective(fovy: float, aspect: float, znear: float, zfar: float) -> np.nda
     mat[3, 2] = -1.0
     return mat
 
+
 # =========================
 # Shader Sources
 # =========================
@@ -170,6 +172,11 @@ GEOMETRY_FRAGMENT_SHADER_SRC = load_shader("engine/rendering/shader/geometry.fra
 SSAO_VERTEX_SHADER_SRC = load_shader("engine/rendering/shader/ssao.vert")
 SSAO_FRAGMENT_SHADER_SRC = load_shader("engine/rendering/shader/ssao.frag")
 SSAO_BLUR_FRAGMENT_SHADER_SRC = load_shader("engine/rendering/shader/ssao_blur.frag")
+
+# BLUR Shader 
+BLOOM_BLUR_FRAGMENT_SHADER_SRC = load_shader("engine/rendering/shader/bloom_blur.frag")
+BLOOM_BRIGHT_FRAGMENT_SHADER_SRC = load_shader("engine/rendering/shader/bloom_bright.frag")
+BLOOM_FINAL_FRAGMENT_SHADER_SRC = load_shader("engine/rendering/shader/bloom_final.frag")
 
 # Final Shader for rendering to screen
 FINAL_VERTEX_SHADER_SRC = load_shader("engine/rendering/shader/final.vert")
@@ -214,6 +221,8 @@ class Renderer:
         # compile shaders
         self.compile_shaders()
         
+        self.load_renderer_config("engine/rendering/renderer_config.json")
+        
         # creates grid plane
         self.grid_vao, self.grid_vertex_count = self.create_grid_plane(plane_size)
         
@@ -222,6 +231,9 @@ class Renderer:
         
         # create frame buffers and textures
         self.create_frame_buffers()
+        
+        # create HDR and bloom buffers
+        self.create_hdr_bloom_buffers()
         
         # SSAO sampling kernel, upload noise texture
         self.ssao_kernel = self.create_ssao_kernel(64)
@@ -234,9 +246,7 @@ class Renderer:
         # set up projection matrices
         self.projection = perspective(math.radians(120.0), self.width / self.height, 0.1, 100.0)
         
-        self.create_fullscreen_quad()
-        
-        self.shadow_far = 25.0
+        self.create_fullscreen_quad()    
         
         # model matrix for the grid plane
         self.model = np.identity(4, dtype=np.float32)
@@ -251,10 +261,12 @@ class Renderer:
             len(self.ssao_kernel),
         )
         GL.glUniform1f(
-            GL.glGetUniformLocation(self.ssao_program, "radius"), 0.5
+            GL.glGetUniformLocation(self.ssao_program, "radius"),
+            self.ssao_cfg.get("radius")
         )
         GL.glUniform1f(
-            GL.glGetUniformLocation(self.ssao_program, "bias"), 0.025
+            GL.glGetUniformLocation(self.ssao_program, "bias"), 
+            self.ssao_cfg.get("bias")
         )
         GL.glUniformMatrix4fv(
             GL.glGetUniformLocation(self.ssao_program, "projection"),
@@ -263,10 +275,17 @@ class Renderer:
             self.projection,
         )
         
+    def load_renderer_config(self, path: str) -> None:
+        with open(path, "r") as f:
+            cfg = json.load(f)
+
+        self.bloom_cfg = cfg.get("bloom", {})
+        self.ssao_cfg  = cfg.get("ssao", {})
+        self.shadow_cfg = cfg.get("shadow", {})
         
     def compile_shaders(self):
         """
-        Docstring für compile_shaders
+        Compiles all the shaders used in the renderer.
 
         :param self: The object itself
         """
@@ -287,6 +306,15 @@ class Renderer:
         )
         self.ssao_blur_program = link_program(
             SSAO_VERTEX_SHADER_SRC, SSAO_BLUR_FRAGMENT_SHADER_SRC
+        )
+        self.bloom_bright_program = link_program(   
+            SSAO_VERTEX_SHADER_SRC, BLOOM_BRIGHT_FRAGMENT_SHADER_SRC, 
+        )
+        self.bloom_blur_program = link_program(
+            SSAO_VERTEX_SHADER_SRC, BLOOM_BLUR_FRAGMENT_SHADER_SRC,
+        )
+        self.bloom_final_program = link_program(
+            SSAO_VERTEX_SHADER_SRC, BLOOM_FINAL_FRAGMENT_SHADER_SRC
         )
         self.final_program = link_program(
             FINAL_VERTEX_SHADER_SRC, FINAL_FRAGMENT_SHADER_SRC
@@ -428,6 +456,7 @@ class Renderer:
         :param size: The size of the grid plane
         :type size: float
         """
+        GL.glDisable(GL.GL_CULL_FACE)
         GL.glUseProgram(self.grid_program)
 
         GL.glUniformMatrix4fv(
@@ -442,6 +471,7 @@ class Renderer:
 
         GL.glBindVertexArray(self.grid_vao)
         GL.glDrawArrays(GL.GL_TRIANGLES, 0, self.grid_vertex_count)
+        GL.glEnable(GL.GL_CULL_FACE)
         GL.glBindVertexArray(0)
         
     def create_grid_plane(self, size: float):
@@ -504,6 +534,63 @@ class Renderer:
         self.light_intensity = intensity
         self.light_ambient = ambient 
     
+    def create_hdr_bloom_buffers(self):
+        """
+        Create framebuffers and textures needed for HDR rendering and bloom effect.
+        
+        :param self: Beschreibung
+        """
+        # HDR FBO
+        self.hdr_fbo = GL.glGenFramebuffers(1)
+        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self.hdr_fbo)
+
+        self.hdr_color = GL.glGenTextures(1)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self.hdr_color)
+        GL.glTexImage2D(
+            GL.GL_TEXTURE_2D, 0, GL.GL_RGBA16F,
+            self.width, self.height, 0,
+            GL.GL_RGBA, GL.GL_FLOAT, None
+        )
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_LINEAR)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_LINEAR)
+
+        self.hdr_rbo = GL.glGenRenderbuffers(1)
+        GL.glBindRenderbuffer(GL.GL_RENDERBUFFER, self.hdr_rbo)
+        GL.glRenderbufferStorage(
+            GL.GL_RENDERBUFFER, GL.GL_DEPTH_COMPONENT24,
+            self.width, self.height
+        )
+
+        GL.glFramebufferTexture2D(
+            GL.GL_FRAMEBUFFER, GL.GL_COLOR_ATTACHMENT0,
+            GL.GL_TEXTURE_2D, self.hdr_color, 0
+        )
+        GL.glFramebufferRenderbuffer(
+            GL.GL_FRAMEBUFFER, GL.GL_DEPTH_ATTACHMENT,
+            GL.GL_RENDERBUFFER, self.hdr_rbo
+        )
+
+        # Ping-pong blur buffers
+        self.blur_fbo = GL.glGenFramebuffers(2)
+        self.blur_tex = GL.glGenTextures(2)
+
+        for i in range(2):
+            GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self.blur_fbo[i])
+            GL.glBindTexture(GL.GL_TEXTURE_2D, self.blur_tex[i])
+            GL.glTexImage2D(
+                GL.GL_TEXTURE_2D, 0, GL.GL_RGBA16F,
+                self.width, self.height, 0,
+                GL.GL_RGBA, GL.GL_FLOAT, None
+            )
+            GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_LINEAR)
+            GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_LINEAR)
+            GL.glFramebufferTexture2D(
+                GL.GL_FRAMEBUFFER, GL.GL_COLOR_ATTACHMENT0,
+                GL.GL_TEXTURE_2D, self.blur_tex[i], 0
+            )
+
+            GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
+        
 
     def create_ssao_buffers(self, width: int, height: int) -> dict:
         """Create framebuffers and textures needed for SSAO.
@@ -664,24 +751,9 @@ class Renderer:
         
         :param self: The Renderer instance
         """
-        self.shadowsize = 1024 # High-res shadow map for detailed shadows
+        self.shadowsize = self.shadow_cfg.get("resolution") # High-res shadow map for detailed shadows, impacts performance very much
         self.depth_fbo, self.depth_texture = create_point_shadow_map(self.shadowsize)
         self.ssao_data = self.create_ssao_buffers(self.width, self.height)
-        
-        self.ref_tex = GL.glGenTextures(1)
-        GL.glBindTexture(GL.GL_TEXTURE_2D, self.ref_tex)
-        GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RGBA8, self.width, self.height, 0, GL.GL_RGBA, GL.GL_UNSIGNED_BYTE, None)
-        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_LINEAR)
-        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_LINEAR)
-        self.ref_fbo = GL.glGenFramebuffers(1)
-        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self.ref_fbo)
-        GL.glFramebufferTexture2D(GL.GL_FRAMEBUFFER, GL.GL_COLOR_ATTACHMENT0, GL.GL_TEXTURE_2D, self.ref_tex, 0)
-        self.ref_rbo = GL.glGenRenderbuffers(1)
-        GL.glBindRenderbuffer(GL.GL_RENDERBUFFER, self.ref_rbo)
-        GL.glRenderbufferStorage(GL.GL_RENDERBUFFER, GL.GL_DEPTH_COMPONENT24, self.width, self.height)
-        GL.glFramebufferRenderbuffer(GL.GL_FRAMEBUFFER, GL.GL_DEPTH_ATTACHMENT, GL.GL_RENDERBUFFER, self.ref_rbo)
-        assert GL.glCheckFramebufferStatus(GL.GL_FRAMEBUFFER) == GL.GL_FRAMEBUFFER_COMPLETE
-        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
         
         
     def cache_uniform_locations(self) -> None:
@@ -722,7 +794,7 @@ class Renderer:
         self.final_roughness_loc = GL.glGetUniformLocation(self.final_program, "roughness")
             
             
-    def point_light_matrices(self, light_pos=None, near_plane=0.05, far_plane=None) -> list:
+    def point_light_matrices(self, light_pos=None, near_plane=None, far_plane=None) -> list:
         """
         Docstring für point_light_matrices
         
@@ -735,14 +807,16 @@ class Renderer:
         """
         if light_pos is None:
             light_pos = self.light_pos
+        if near_plane is None:
+            near_plane = self.shadow_cfg.get("near_plane")
         if far_plane is None:
-            far_plane = self.shadow_far
-            
+            far_plane = self.shadow_cfg.get("far_plane")
+ 
         proj = perspective(
             math.radians(90.0),
             1.0,
             near_plane,
-            far_plane
+            far_plane,
         )
 
         matrices = []
@@ -784,7 +858,7 @@ class Renderer:
             GL.glUniformMatrix4fv(loc, 1, GL.GL_TRUE, mat)
 
         GL.glUniform3fv(self.depth_light_pos_loc, 1, self.light_pos)
-        GL.glUniform1f(self.depth_far_plane_loc, self.shadow_far)
+        GL.glUniform1f(self.depth_far_plane_loc, self.shadow_cfg.get("far_plane"))
 
         for obj in scene_objects:
             GL.glUniformMatrix4fv(
@@ -928,6 +1002,72 @@ class Renderer:
 
         GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
         
+    def render_bloom_pass(self) -> None:
+        bloom = self.bloom_cfg
+        if not bloom.get("enabled", False):
+            return
+
+        threshold = bloom.get("threshold")
+        intensity = bloom.get("intensity")
+        blur_passes = 6
+
+        # ---------- Bright pass ----------
+        GL.glUseProgram(self.bloom_bright_program)
+        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self.blur_fbo[0])
+        GL.glClear(GL.GL_COLOR_BUFFER_BIT)
+
+        GL.glActiveTexture(GL.GL_TEXTURE0)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self.hdr_color)
+        GL.glUniform1i(GL.glGetUniformLocation(self.bloom_bright_program, "hdrScene"), 0)
+        GL.glUniform1f(GL.glGetUniformLocation(self.bloom_bright_program, "threshold"), threshold)
+
+        GL.glBindVertexArray(self.quad_vao)
+        GL.glDrawArrays(GL.GL_TRIANGLES, 0, 6)
+
+        # ---------- Blur ----------
+        GL.glUseProgram(self.bloom_blur_program)
+
+        horizontal = True
+        read_tex = 0
+        write_fbo = 1
+
+        for _ in range(blur_passes):
+            GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self.blur_fbo[write_fbo])
+            GL.glUniform1i(
+                GL.glGetUniformLocation(self.bloom_blur_program, "horizontal"),
+                horizontal
+            )
+
+            GL.glBindTexture(GL.GL_TEXTURE_2D, self.blur_tex[read_tex])
+            GL.glDrawArrays(GL.GL_TRIANGLES, 0, 6)
+
+            horizontal = not horizontal
+            read_tex, write_fbo = write_fbo, read_tex
+
+        final_blur_tex = self.blur_tex[read_tex]
+
+        # ---------- Final ----------
+        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
+        GL.glClear(int(GL.GL_COLOR_BUFFER_BIT) | int(GL.GL_DEPTH_BUFFER_BIT))
+
+        GL.glUseProgram(self.bloom_final_program)
+
+        GL.glActiveTexture(GL.GL_TEXTURE0)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self.hdr_color)
+        GL.glUniform1i(GL.glGetUniformLocation(self.bloom_final_program, "hdrScene"), 0)
+
+        GL.glActiveTexture(GL.GL_TEXTURE1)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, final_blur_tex)
+        GL.glUniform1i(GL.glGetUniformLocation(self.bloom_final_program, "bloomBlur"), 1)
+
+        GL.glUniform1f(
+            GL.glGetUniformLocation(self.bloom_final_program, "bloomIntensity"),
+            intensity
+        )
+
+        GL.glBindVertexArray(self.quad_vao)
+        GL.glDrawArrays(GL.GL_TRIANGLES, 0, 6)
+        
         
     def render_final_pass(self, player, camera, scene_objects: list[RenderObject]) -> None:
         """
@@ -943,6 +1083,7 @@ class Renderer:
         :param camera: active camera
         :param scene_objects: all visible objects
         """
+        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self.hdr_fbo)
 
         GL.glEnable(GL.GL_DEPTH_TEST)
         GL.glViewport(0, 0, self.width, self.height)
@@ -981,7 +1122,7 @@ class Renderer:
         )
         GL.glUniform1f(
             GL.glGetUniformLocation(self.final_program, "far_plane"),
-            self.shadow_far
+            self.shadow_cfg.get("far_plane")
         )
 
         # -----------------------

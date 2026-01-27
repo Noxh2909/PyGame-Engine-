@@ -1,0 +1,17 @@
+{
+  "bloom": {
+    "enabled": true,
+    "threshold": 1.0,
+    "intensity": 0.09
+  },
+  "ssao": {
+    "enabled": true,
+    "radius": 0.35,
+    "bias": 0.025
+  }, 
+  "shadow": {
+    "resolution": 1024,
+    "near_plane": 0.1,
+    "far_plane": 25.0
+    }
+}

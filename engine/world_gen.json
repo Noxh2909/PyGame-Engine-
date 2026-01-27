@@ -80,7 +80,7 @@
       "mesh": "sphere",
       "material": {
         "name": "sun",
-        "is_emissive": false,
+        "is_emissive": true,
         "shininess": 0.0,
         "specular_strength": 0.0
       },
@@ -90,7 +90,7 @@
         "ambient_strength": 0.3,
         "direction": [0.0, 1.0, 0.0],
         "color": [1.0, 0.95, 0.85],
-        "intensity": 0.8
+        "intensity": 1.0
       }
     }
   ]

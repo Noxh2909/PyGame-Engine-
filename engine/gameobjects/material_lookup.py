@@ -42,8 +42,8 @@ class Material:
         emissive=False,
         texture_scale_mode=None,
         texture_scale_value=None,
-        shininess=4.0,
-        specular_strength=2.0,
+        shininess=24.0,
+        specular_strength=1.0,
     ):
         """
         color         : fallback color (vec3)

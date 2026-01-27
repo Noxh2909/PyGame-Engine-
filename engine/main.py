@@ -196,32 +196,26 @@ while running:
     light_space_matrix = renderer.point_light_matrices()
 
     # Shadow pass
-    renderer.render_shadow_pass(
-        scene_objects,
-    )
+    renderer.render_shadow_pass(scene_objects)
 
     # SSAO pass
-    renderer.render_ssao_pass(
-        camera,
-        scene_objects,
-    )
+    renderer.render_ssao_pass(camera, scene_objects)
 
     # Final lighting pass
-    renderer.render_final_pass(
-        player,
-        camera,
-        scene_objects,
-    )
-
-    # Debug grid (NICHT Teil der Scene)
-    GL.glDisable(GL.GL_CULL_FACE)
+    renderer.render_final_pass(player, camera, scene_objects)
+    
+    # Debug grid
     renderer.draw_debug_grid(camera, WIDTH / HEIGHT, size=50.0)
-    GL.glEnable(GL.GL_CULL_FACE)
-
-    # -------------
+    
     # Debug HUD
-    # -------------
     renderer.render_debug_hud(clock, player)
+    
+    # Bloom pass
+    renderer.render_bloom_pass()
+    
+    # -------------
+    # Update display
+    # -------------
     
     keys = pygame.key.get_pressed()
     
