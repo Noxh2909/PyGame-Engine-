@@ -52,30 +52,6 @@
       "scale": [10, 0.5, 10],
       "collider": [1, 1, 1]
     },
-     {
-      "mesh": "cube",
-      "material": {
-        "name": "marble",
-        "texture_scale_mode": "default",
-        "shininess": 64.0,
-        "specular_strength": 0.9
-      },
-      "position": [-1, 5, 4],
-      "scale": [0.4, 0.4, 0.4],
-      "collider": [0, 0, 0]
-    },
-        {
-      "mesh": "cube",
-      "material": {
-        "name": "marble",
-        "texture_scale_mode": "default",
-        "shininess": 64.0,
-        "specular_strength": 1.0
-      },
-      "position": [-1, 5, 1],
-      "scale": [0.4, 0.4, 0.4],
-      "collider": [0, 0, 0]
-    },
     {
       "mesh": "sphere",
       "material": {

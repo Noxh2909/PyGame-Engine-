@@ -2,16 +2,18 @@ import numpy as np
 
 
 class Transform:
-    def __init__(self, position=(0, 0, 0), scale=(1, 1, 1)):
+    def __init__(self, position=(0, 0, 0), scale=(1, 1, 1), yaw=0.0):
         """
         Docstring für __init__
 
         :param self: The object itself
         :param position: The position of the transform
         :param scale: The scale of the transform
+        :param yaw: The yaw (rotation around the y-axis) of the transform
         """
         self.position = np.array(position, dtype=np.float32)
         self.scale = np.array(scale, dtype=np.float32)
+        self.yaw = yaw
 
     def matrix(self):
         """

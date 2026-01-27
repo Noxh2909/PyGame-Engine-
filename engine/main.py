@@ -15,7 +15,7 @@ from gameobjects.material_lookup import Material
 from gameobjects.mesh import Mesh
 from gameobjects.glb_loader import GLBLoader
 from gameobjects.collider.aabb import AABBCollider
-from gameobjects.texture import load_texture
+from gameobjects.texture import Texture
 from gameobjects.object import GameObject
 from gameobjects.vertec import plane_vertices
 
@@ -110,13 +110,13 @@ mannequin_mesh = Mesh(gltf["vertices"], gltf["indices"])
 mannequin_material = Material(color=(1.0, 1.0, 1.0))
 
 if gltf["albedo"] is not None:
-    temp_dir = "engine/gameobjects/assets/skins"
+    temp_dir = "assets/skins"
     os.makedirs(temp_dir, exist_ok=True)
     albedo_path = os.path.join(temp_dir, "mannequin_albedo.png")
     gltf["albedo"].save(albedo_path)
 
-    from gameobjects.texture import load_texture
-    mannequin_material.texture = load_texture(albedo_path)
+    from gameobjects.texture import Texture
+    mannequin_material.texture = Texture.load_texture(albedo_path)
 
 
 mannequin_render_obj = RenderObject(
@@ -143,7 +143,7 @@ for obj in world.objects:
         )
 
 # Player mannequin is part of the render scene
-# scene_objects.append(mannequin_render_obj)
+scene_objects.append(mannequin_render_obj)
 
 
 # ====================
@@ -155,7 +155,7 @@ first_person = True
 camera.third_person = False
 
 while running:
-    dt = clock.tick(240) / 1000.0
+    dt = clock.tick(120) / 1000.0
 
     # -------------
     # Events
@@ -184,15 +184,10 @@ while running:
     # Sync mannequin to player
     # -------------
     mannequin_render_obj.transform.position = player.position.copy()
-    # mannequin_render_obj.transform.rotation_y = player.yaw
-
-    # Hide mannequin in first-person
-    # mannequin_render_obj.material.visible = camera.third_person
 
     # -------------
     # Render passes
     # -------------
-
     light_space_matrix = renderer.point_light_matrices()
 
     # Shadow pass

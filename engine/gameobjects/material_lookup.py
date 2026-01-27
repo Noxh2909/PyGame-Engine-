@@ -1,8 +1,8 @@
-from gameobjects.texture import load_texture
+from gameobjects.texture import Texture
 import os
 
 ENGINE_DIR = os.path.dirname(os.path.dirname(__file__))  # .../pygame/engine
-PROJECT_ROOT = os.path.dirname(ENGINE_DIR)  # .../pygame
+PROJECT_ROOT = os.path.dirname(ENGINE_DIR)               # .../pygame
 
 texture_dir = os.path.join(PROJECT_ROOT, "assets", "textures")
 
@@ -12,23 +12,23 @@ if not os.path.isdir(texture_dir):
 MATERIAL_TABLE = {
     "white": lambda: Material(color=(1, 1, 1)),
     "wood": lambda: Material(
-        texture=load_texture(os.path.join(texture_dir, "wood_wall.jpg"))
+        texture=Texture.load_texture(os.path.join(texture_dir, "wood_wall.jpg"))
     ),
     "marble": lambda: Material(
-        texture=load_texture(os.path.join(texture_dir, "marble_floor.jpg"))
+        texture=Texture.load_texture(os.path.join(texture_dir, "marble_floor.jpg"))
     ),
     "ocean": lambda: Material(
-        texture=load_texture(os.path.join(texture_dir, "ocean.jpg"))
+        texture=Texture.load_texture(os.path.join(texture_dir, "ocean.jpg"))
     ),
     "destiny": lambda: Material(
-        texture=load_texture(os.path.join(texture_dir, "destiny2.jpeg"))
+        texture=Texture.load_texture(os.path.join(texture_dir, "destiny2.jpeg"))
     ),
     "yasu": lambda: Material(
-        texture=load_texture(os.path.join(texture_dir, "yasu.jpeg"))
+        texture=Texture.load_texture(os.path.join(texture_dir, "yasu.jpeg"))
     ),
-    "js": lambda: Material(texture=load_texture(os.path.join(texture_dir, "js.jpeg"))),
+    "js": lambda: Material(texture=Texture.load_texture(os.path.join(texture_dir, "js.jpeg"))),
     "elian": lambda: Material(
-        texture=load_texture(os.path.join(texture_dir, "elian.jpeg"))
+        texture=Texture.load_texture(os.path.join(texture_dir, "elian.jpeg"))
     ),
     "sun": lambda: Material(color=(255, 255, 255), emissive=True),
 }
@@ -42,7 +42,7 @@ class Material:
         emissive=False,
         texture_scale_mode=None,
         texture_scale_value=None,
-        shininess=24.0,
+        shininess=48.0,
         specular_strength=1.0,
     ):
         """
