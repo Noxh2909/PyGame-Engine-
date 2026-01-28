@@ -50,7 +50,7 @@
       },
       "position": [-1, 0, 3],
       "scale": [10, 0.5, 10],
-      "collider": [1, 1, 1]
+      "collider": [1, 1.5, 1]
     },
     {
       "mesh": "sphere",

@@ -2,7 +2,7 @@ import os
 import pygame
 from OpenGL import GL
 
-from gameobjects.player.mannequin.mannequin import Mannequin
+from gameobjects.player.mannequin import Mannequin
 
 from rendering.renderer import Renderer, RenderObject
 from world import World
@@ -119,11 +119,12 @@ if gltf["albedo"] is not None:
     from gameobjects.texture import Texture
     mannequin_material.texture = Texture.load_texture(albedo_path)
 
-
 mannequin = Mannequin(
     player=player,
-    body_mesh=mannequin_mesh,
+    mesh=mannequin_mesh,
     material=mannequin_material,
+    foot_offset=gltf["foot_offset"],
+    scale=player.capsule_height,
 )
 
 
@@ -188,11 +189,6 @@ while running:
     physics.step(dt, player)
 
     # -------------
-    # Sync mannequin to player
-    # -------------
-    mannequin.transform.position = player.position.copy()
-
-    # -------------
     # Render passes
     # -------------
     light_space_matrix = renderer.point_light_matrices()
@@ -215,7 +211,6 @@ while running:
     # -------------
     # DEBUG OBJECT CONTROL
     # -------------
-    
     keys = pygame.key.get_pressed()
     
     obj_movement_speed = 0.1
@@ -236,7 +231,8 @@ while running:
     # Determine which object to control
     target_transform = None
     if control_target == "mannequin":
-        target_transform = mannequin.transform
+        # Mannequin doesn't have a direct transform attribute, skip it
+        target_transform = None
     elif control_target == "sun" and sun is not None:
         target_transform = sun.transform
     elif control_target.startswith("scene_"):
