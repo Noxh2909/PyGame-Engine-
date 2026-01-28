@@ -120,7 +120,7 @@ if gltf["albedo"] is not None:
 
 mannequin_render_obj = RenderObject(
     mesh=mannequin_mesh,
-    transform=Transform(),
+    transform=Transform(scale=(2.8, 2.8, 2.8)),
     material=mannequin_material,
 )
 
@@ -142,7 +142,7 @@ for obj in world.objects:
         )
 
 # Player mannequin is part of the render scene
-# scene_objects.append(mannequin_render_obj)
+scene_objects.append(mannequin_render_obj)
 
 
 # ====================
@@ -152,6 +152,12 @@ for obj in world.objects:
 running = True
 first_person = True
 camera.third_person = False
+
+# State for object control
+control_state = {
+    'target': 'sun',
+    'm_was_pressed': False
+}
 
 while running:
     dt = clock.tick(120) / 1000.0
@@ -201,33 +207,68 @@ while running:
     # Debug grid
     renderer.draw_debug_grid(camera, WIDTH / HEIGHT, size=50.0)
     
-    # Debug HUD
-    renderer.render_debug_hud(clock, player)
-    
     # Bloom pass
     renderer.render_bloom_pass()
     
     # -------------
-    # Update display
+    # DEBUG OBJECT CONTROL
     # -------------
     
     keys = pygame.key.get_pressed()
     
-    sphere_speed = 0.1
+    obj_movement_speed = 0.1
 
-    if sun is not None:
+    # Toggle control target with 'M' key (single press)
+    if keys[pygame.K_m] and not control_state['m_was_pressed']:
+        # Get list of controllable objects
+        controllable_objects = ['sun', 'mannequin'] + [f'scene_{i}' for i in range(len(scene_objects) - 1)]
+        current_index = controllable_objects.index(control_state['target'])
+        next_index = (current_index + 1) % len(controllable_objects)
+        control_state['target'] = controllable_objects[next_index]
+        control_state['m_was_pressed'] = True
+    elif not keys[pygame.K_m]:
+        control_state['m_was_pressed'] = False
+    
+    control_target = control_state['target']
+    
+    # Determine which object to control
+    target_transform = None
+    if control_target == "mannequin":
+        target_transform = mannequin_render_obj.transform
+    elif control_target == "sun" and sun is not None:
+        target_transform = sun.transform
+    elif control_target.startswith("scene_"):
+        scene_index = int(control_target.split('_')[1])
+        if scene_index < len(scene_objects) - 1:  # Exclude mannequin
+            target_transform = scene_objects[scene_index].transform
+    
+    # Get object position
+    object_position = None
+    if target_transform is not None:
+        object_position = target_transform.position
+    
+    object_scale = None 
+    if target_transform is not None:
+        object_scale = target_transform.scale
+    
+    # Apply movement to target object
+    if target_transform is not None:
         if keys[pygame.K_UP]:
-            sun.transform.position[2] -= sphere_speed
+            target_transform.position[2] -= obj_movement_speed
         if keys[pygame.K_DOWN]:
-            sun.transform.position[2] += sphere_speed
+            target_transform.position[2] += obj_movement_speed
         if keys[pygame.K_LEFT]:
-            sun.transform.position[0] -= sphere_speed
+            target_transform.position[0] -= obj_movement_speed
         if keys[pygame.K_RIGHT]:
-            sun.transform.position[0] += sphere_speed
+            target_transform.position[0] += obj_movement_speed
         if keys[pygame.K_PAGEUP]:
-            sun.transform.position[1] += sphere_speed
+            target_transform.position[1] += obj_movement_speed
         if keys[pygame.K_PAGEDOWN]:
-            sun.transform.position[1] -= sphere_speed
+            target_transform.position[1] -= obj_movement_speed
+            
+    # Debug HUD
+    renderer.render_debug_hud(clock, player, obj=control_state, obj_pos=object_position, obj_scale=object_scale)
+    
     
     pygame.display.flip()
 

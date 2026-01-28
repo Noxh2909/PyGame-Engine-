@@ -364,7 +364,7 @@ class Renderer:
         self.debug_tex = GL.glGenTextures(1)
         
         
-    def render_debug_hud(self, clock, player):
+    def render_debug_hud(self, clock, player, obj, obj_pos, obj_scale):
         """
         Description for render_debug_hud which displays FPS and camera position.
         
@@ -394,9 +394,12 @@ class Renderer:
 
         lines = [
             f"FPS: {clock.get_fps():.1f}",
-            f"Pos: {player.position[0]:.2f}, "
+            f"Player Pos: {player.position[0]:.2f}, "
             f"{player.position[1]:.2f}, "
             f"{player.position[2]:.2f}",
+            f"Controlled object (switch 'M'): {obj['target']}",
+            f"Object Pos: {obj_pos[0]:.2f}, {obj_pos[1]:.2f}, {obj_pos[2]:.2f}",
+            f"Object Scale: {obj_scale[0]:.2f}, {obj_scale[1]:.2f}, {obj_scale[2]:.2f}"
         ]
 
         x, y = 10, 10
