@@ -947,7 +947,6 @@ class Renderer:
                 self.g_model_loc, 1, GL.GL_TRUE, obj.transform.matrix()
             )
 
-            # Farbe ist für SSAO irrelevant, aber Shader braucht evtl. einen Wert
             GL.glUniform3f(self.g_object_color_loc, 1.0, 1.0, 1.0)
 
             obj.mesh.draw()
@@ -1007,9 +1006,9 @@ class Renderer:
         if not bloom.get("enabled", False):
             return
 
-        threshold = bloom.get("threshold")
-        intensity = bloom.get("intensity")
-        blur_passes = 6
+        threshold = bloom.get("threshold") # brightness threshold, determines what is "bright"
+        intensity = bloom.get("intensity") # bloom intensity, determines how strong the bloom effect is
+        blur_passes = 6                    # number of blur passes, determines how much the bloom spreads
 
         # ---------- Bright pass ----------
         GL.glUseProgram(self.bloom_bright_program)

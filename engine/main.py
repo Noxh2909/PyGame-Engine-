@@ -1,6 +1,5 @@
 import os
 import pygame
-import numpy as np
 from OpenGL import GL
 
 from rendering.renderer import Renderer, RenderObject
