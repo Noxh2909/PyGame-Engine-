@@ -14,7 +14,7 @@ from gameobjects.player.camera import Camera
 from gameobjects.transform import Transform
 from gameobjects.material_lookup import Material
 from gameobjects.mesh import Mesh
-from gameobjects.glb_loader import GLBLoader
+from gameobjects.loader.glb_loader import GLBLoader
 from gameobjects.collider.aabb import AABBCollider
 from gameobjects.texture import Texture
 from gameobjects.object import GameObject

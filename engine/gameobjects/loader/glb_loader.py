@@ -4,6 +4,7 @@ from pygltflib import GLTF2
 import numpy as np
 import struct
 from typing import Optional
+from gameobjects.animation.animation_utils import build_local_matrix, lerp, quat_slerp
 
 
 class GLBLoader:
@@ -116,6 +117,13 @@ class GLBLoader:
 
         positions = self._read_accessor(prim.attributes.POSITION)
 
+        # --- Compute mesh bounds in model space ---
+        min_bounds = positions.min(axis=0)
+        max_bounds = positions.max(axis=0)
+
+        model_height = max_bounds[1] - min_bounds[1]
+        foot_offset = -min_bounds[1]  # distance from pivot to feet
+
         normals = (
             self._read_accessor(prim.attributes.NORMAL)
             if prim.attributes.NORMAL is not None
@@ -135,6 +143,191 @@ class GLBLoader:
 
         vertices = np.hstack([positions, normals, uvs]).astype(np.float32)
         albedo = self._load_basecolor_texture(prim)
+
+        # --- Debug: print animation summary ---
+        if not self.gltf.animations:
+            print("[GLB] No animations found.")
+        else:
+            print(f"[GLB] Found {len(self.gltf.animations)} animation(s):")
+            for i, a in enumerate(self.gltf.animations):
+                name = a.name if a.name else f"<unnamed_{i}>"
+                ch = len(a.channels) if a.channels else 0
+                smp = len(a.samplers) if a.samplers else 0
+                print(f"  - {name}: channels={ch}, samplers={smp}")
+
+        # --- Debug: detailed animation inspection (first animation only) ---
+        if self.gltf.animations:
+            anim0 = self.gltf.animations[0]
+            print(f"[GLB] Inspecting animation: {anim0.name}")
+
+            # Print first few channels with node names
+            for i, ch in enumerate(anim0.channels[:10]):
+                node_idx = ch.target.node
+                node_name = (
+                    self.gltf.nodes[node_idx].name
+                    if node_idx is not None and self.gltf.nodes and self.gltf.nodes[node_idx].name
+                    else f"<node_{node_idx}>"
+                )
+                print(
+                    f"    Channel {i}: "
+                    f"node={node_name} ({node_idx}), "
+                    f"path={ch.target.path}, "
+                    f"sampler={ch.sampler}"
+                )
+
+            # Compute animation duration from sampler inputs
+            durations = []
+            for sampler in anim0.samplers:
+                if sampler.input is not None:
+                    times = self._read_accessor(sampler.input).flatten()
+                    if times.size > 0:
+                        durations.append(times.max())
+
+            if durations:
+                print(f"[GLB] Animation duration: {max(durations):.3f} seconds")
+            else:
+                print("[GLB] Animation duration: unknown")
+
+            # --- Debug: evaluate animation at fixed time t ---
+            if self.gltf.animations:
+                anim0 = self.gltf.animations[0]
+                t = 0.5  # seconds
+                print(f"[GLB] Evaluating animation at t={t:.2f}s")
+
+                # --- Debug: Interpolated TRS at t=... ---
+                trs_per_node = {}
+
+                for i, ch in enumerate(anim0.channels[:10]):  # limit output
+                    sampler = anim0.samplers[ch.sampler]
+
+                    if sampler.input is None or sampler.output is None:
+                        continue
+
+                    times = self._read_accessor(sampler.input).flatten()
+                    values = self._read_accessor(sampler.output)
+
+                    if times.size == 0:
+                        continue
+
+                    # find last keyframe index with time <= t
+                    idx = np.searchsorted(times, t, side="right") - 1
+                    idx = max(0, min(idx, len(times) - 1))
+
+                    node_idx = ch.target.node
+                    node_name = (
+                        self.gltf.nodes[node_idx].name
+                        if node_idx is not None and self.gltf.nodes and self.gltf.nodes[node_idx].name
+                        else f"<node_{node_idx}>"
+                    )
+
+                    v = values[idx]
+
+                    print(
+                        f"    node={node_name} ({node_idx}), "
+                        f"path={ch.target.path}, "
+                        f"key={idx}, "
+                        f"value={v}"
+                    )
+
+                    node = ch.target.node
+                    trs_per_node.setdefault(
+                        node,
+                        {
+                            "translation": np.zeros(3, dtype=np.float32),
+                            "rotation": np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32),
+                            "scale": np.ones(3, dtype=np.float32),
+                        },
+                    )
+
+                    trs_per_node[node][ch.target.path] = v
+
+                # --- Debug: build local bone matrix for Hips ---
+                for node_idx, trs in trs_per_node.items():
+                    node_name = (
+                        self.gltf.nodes[node_idx].name
+                        if self.gltf.nodes[node_idx].name
+                        else f"<node_{node_idx}>"
+                    )
+
+                    if node_name == "mixamorig1:Hips":
+                        M_local = build_local_matrix(
+                            translation=trs["translation"],
+                            rotation=trs["rotation"],
+                            scale=trs["scale"],
+                        )
+
+                        print("[GLB] Local bone matrix for Hips:")
+                        print(M_local)
+
+                # --- Build parent map (once) ---
+                parent_map = {}
+                for parent_idx, node in enumerate(self.gltf.nodes):
+                    if node.children:
+                        for child in node.children:
+                            parent_map[child] = parent_idx
+
+                # --- Build local matrices for all collected nodes ---
+                local_matrices = {}
+                for n_idx, trs in trs_per_node.items():
+                    local_matrices[n_idx] = build_local_matrix(
+                        translation=trs["translation"],
+                        rotation=trs["rotation"],
+                        scale=trs["scale"],
+                    )
+
+                # --- Recursive global matrix computation ---
+                def compute_global(n_idx):
+                    # If this node has no local animation, treat it as identity
+                    local = local_matrices.get(n_idx, np.eye(4, dtype=np.float32))
+
+                    parent = parent_map.get(n_idx)
+                    if parent is None:
+                        return local
+
+                    return compute_global(parent) @ local
+
+                # --- Debug: print global matrices for a small chain ---
+                print("[GLB] Global bone matrices (debug):")
+                for name in ("mixamorig1:Hips", "mixamorig1:Spine", "mixamorig1:Spine1"):
+                    for idx, node in enumerate(self.gltf.nodes):
+                        if node.name == name and idx in local_matrices:
+                            M_global = compute_global(idx)
+                            print(f"  Global matrix for {name}:")
+                            print(M_global)
+
+                # --- Inverse Bind Matrices (Skinning prep) ---
+                if self.gltf.skins:
+                    skin = self.gltf.skins[0]
+
+                    if skin.inverseBindMatrices is None:
+                        print("[GLB] Skin has no inverseBindMatrices")
+                    else:
+                        inv_bind = self._read_accessor(skin.inverseBindMatrices)
+                        joints = skin.joints or []
+
+                        print("[GLB] Skinning matrices (debug):")
+
+                        for i, joint_idx in enumerate(joints):
+                            if joint_idx not in local_matrices:
+                                continue
+
+                            M_global = compute_global(joint_idx)
+                            M_inv = inv_bind[i].reshape((4, 4))
+
+                            M_skin = M_global @ M_inv
+
+                            joint_name = (
+                                self.gltf.nodes[joint_idx].name
+                                if self.gltf.nodes[joint_idx].name
+                                else f"<node_{joint_idx}>"
+                            )
+
+                            print(f"  Skin matrix for {joint_name}:")
+                            print(M_skin)
+
+                            # limit debug output
+                            if i >= 2:
+                                break
 
         # animations
         animations = []
@@ -174,4 +367,8 @@ class GLBLoader:
             "animations": animations,
             "nodes": self.gltf.nodes or [],
             "skins": self.gltf.skins or [],
+            "bounds_min": min_bounds.astype(np.float32),
+            "bounds_max": max_bounds.astype(np.float32),
+            "model_height": float(model_height),
+            "foot_offset": float(foot_offset),
         }
