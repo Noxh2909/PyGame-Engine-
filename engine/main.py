@@ -64,9 +64,9 @@ world = World("engine/world_gen.json")
 # Create Physics Plane
 plane_game_object = GameObject(
     mesh=None,
-    transform=Transform(position=(0.0, 0.0, 0.0)),
+    transform=Transform(position=(0.0, 0.05, 0.0)),
     material=None,
-    collider=AABBCollider(size=(1000.0, 0.0, 1000.0))
+    collider=AABBCollider(size=(1000.0, 0.1, 1000.0))
 )
 
 physics.add_static(plane_game_object)
