@@ -105,9 +105,7 @@ if sun and sun.light:
 
 loader = GLBLoader("assets/models/idle.glb")
 gltf = loader.load_first_mesh()
-
 mannequin_mesh = Mesh(gltf["vertices"], gltf["indices"])
-
 mannequin_material = Material(color=(1.0, 1.0, 1.0))
 
 if gltf["albedo"] is not None:
@@ -143,9 +141,6 @@ for obj in world.objects:
                 material=obj.material,
             )
         )
-
-# Player mannequin is part of the render scene
-# scene_objects.append(mannequin)
 
 
 # ====================
