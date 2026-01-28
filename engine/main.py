@@ -2,6 +2,8 @@ import os
 import pygame
 from OpenGL import GL
 
+from gameobjects.player.mannequin.mannequin import Mannequin
+
 from rendering.renderer import Renderer, RenderObject
 from world import World
 from physics.world_physics import PhysicsWorld
@@ -118,9 +120,9 @@ if gltf["albedo"] is not None:
     mannequin_material.texture = Texture.load_texture(albedo_path)
 
 
-mannequin_render_obj = RenderObject(
-    mesh=mannequin_mesh,
-    transform=Transform(scale=(2.8, 2.8, 2.8)),
+mannequin = Mannequin(
+    player=player,
+    body_mesh=mannequin_mesh,
     material=mannequin_material,
 )
 
@@ -142,7 +144,7 @@ for obj in world.objects:
         )
 
 # Player mannequin is part of the render scene
-scene_objects.append(mannequin_render_obj)
+# scene_objects.append(mannequin)
 
 
 # ====================
@@ -188,7 +190,7 @@ while running:
     # -------------
     # Sync mannequin to player
     # -------------
-    # mannequin_render_obj.transform.position = player.position.copy()
+    mannequin.transform.position = player.position.copy()
 
     # -------------
     # Render passes
@@ -196,13 +198,13 @@ while running:
     light_space_matrix = renderer.point_light_matrices()
 
     # Shadow pass
-    renderer.render_shadow_pass(scene_objects)
+    renderer.render_shadow_pass(scene_objects, avatars=[mannequin])
 
     # SSAO pass
     renderer.render_ssao_pass(camera, scene_objects)
 
     # Final lighting pass
-    renderer.render_final_pass(player, camera, scene_objects)
+    renderer.render_final_pass(mannequin, player, camera, scene_objects)
     
     # Debug grid
     renderer.draw_debug_grid(camera, WIDTH / HEIGHT, size=50.0)
@@ -221,7 +223,7 @@ while running:
     # Toggle control target with 'M' key (single press)
     if keys[pygame.K_m] and not control_state['m_was_pressed']:
         # Get list of controllable objects
-        controllable_objects = ['sun', 'mannequin'] + [f'scene_{i}' for i in range(len(scene_objects) - 1)]
+        controllable_objects = ['sun'] + [f'scene_{i}' for i in range(len(scene_objects) - 1)]
         current_index = controllable_objects.index(control_state['target'])
         next_index = (current_index + 1) % len(controllable_objects)
         control_state['target'] = controllable_objects[next_index]
@@ -234,7 +236,7 @@ while running:
     # Determine which object to control
     target_transform = None
     if control_target == "mannequin":
-        target_transform = mannequin_render_obj.transform
+        target_transform = mannequin.transform
     elif control_target == "sun" and sun is not None:
         target_transform = sun.transform
     elif control_target.startswith("scene_"):
@@ -242,14 +244,13 @@ while running:
         if scene_index < len(scene_objects) - 1:  # Exclude mannequin
             target_transform = scene_objects[scene_index].transform
     
-    # Get object position
-    object_position = None
+    # Get object position / scale (HUD-safe)
     if target_transform is not None:
         object_position = target_transform.position
-    
-    object_scale = None 
-    if target_transform is not None:
         object_scale = target_transform.scale
+    else:
+        object_position = (0.0, 0.0, 0.0)
+        object_scale = (0.0, 0.0, 0.0)
     
     # Apply movement to target object
     if target_transform is not None:

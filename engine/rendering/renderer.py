@@ -275,6 +275,12 @@ class Renderer:
             self.projection,
         )
         
+    # -----------------------
+    # Renderer Configuration Loading
+    # -----------------------
+    # Functions to load renderer configuration from a JSON file.
+    # -----------------------
+        
     def load_renderer_config(self, path: str) -> None:
         with open(path, "r") as f:
             cfg = json.load(f)
@@ -283,6 +289,12 @@ class Renderer:
         self.ssao_cfg  = cfg.get("ssao", {})
         self.shadow_cfg = cfg.get("shadow", {})
         
+    # -----------------------
+    # Shader Compilation
+    # -----------------------
+    # Functions to compile all shaders used in the renderer.
+    # -----------------------
+    
     def compile_shaders(self):
         """
         Compiles all the shaders used in the renderer.
@@ -320,6 +332,11 @@ class Renderer:
             FINAL_VERTEX_SHADER_SRC, FINAL_FRAGMENT_SHADER_SRC
         )
 
+    # -----------------------
+    # Debug HUD Initialization
+    # -----------------------
+    # Functions to initialize the debug HUD for displaying FPS and camera position.
+    # -----------------------
 
     def init_debug_hud(self, viewport_size):
         """
@@ -363,6 +380,11 @@ class Renderer:
         GL.glBindVertexArray(0)
         self.debug_tex = GL.glGenTextures(1)
         
+    # -----------------------  
+    # Debug HUD Rendering
+    # -----------------------
+    # Functions to render a debug HUD overlay.
+    # -----------------------
         
     def render_debug_hud(self, clock, player, obj, obj_pos, obj_scale):
         """
@@ -422,6 +444,11 @@ class Renderer:
         GL.glEnable(GL.GL_DEPTH_TEST)
         GL.glEnable(GL.GL_CULL_FACE)
         
+    # -----------------------
+    # Debug HUD Texture Upload
+    # -----------------------
+    # Functions to upload a pygame surface to an OpenGL texture for HUD rendering.
+    # -----------------------
         
     def upload_debug_surface(self, surf):
         """ Upload a pygame surface to the debug texture.
@@ -448,6 +475,12 @@ class Renderer:
             data,
         )
         return surf.get_width(), surf.get_height()
+    
+    # -----------------------
+    # Debug Grid Drawing
+    # -----------------------
+    # Functions to draw a debug grid plane in the scene.
+    # -----------------------
 
     def draw_debug_grid(self, camera, aspect, size: float):
         """
@@ -476,6 +509,12 @@ class Renderer:
         GL.glDrawArrays(GL.GL_TRIANGLES, 0, self.grid_vertex_count)
         GL.glEnable(GL.GL_CULL_FACE)
         GL.glBindVertexArray(0)
+        
+    # -----------------------
+    # Grid Plane Creation   
+    # -----------------------
+    # Functions to create a grid plane mesh for debugging.
+    # -----------------------    
         
     def create_grid_plane(self, size: float):
         """
@@ -516,6 +555,11 @@ class Renderer:
         GL.glBindVertexArray(0)
         return vao, len(vertices) // 8
     
+    # -----------------------
+    # Light Setup
+    # -----------------------
+    # Functions to set up lighting parameters.
+    # -----------------------
     
     def set_light(self, direction, color, intensity, ambient=None, position=None):
         """
@@ -535,7 +579,13 @@ class Renderer:
         self.light_pos = position
 
         self.light_intensity = intensity
-        self.light_ambient = ambient 
+        self.light_ambient = ambient
+        
+    # -----------------------
+    # HDR and Bloom Buffer Creation
+    # -----------------------
+    # Functions to create HDR and bloom framebuffers and textures.
+    # ----------------------- 
     
     def create_hdr_bloom_buffers(self):
         """
@@ -593,8 +643,13 @@ class Renderer:
             )
 
             GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
-        
-
+    
+    # -----------------------
+    # SSAO Buffer Creation
+    # -----------------------
+    # Functions to create SSAO framebuffers and textures.
+    # -----------------------      
+    
     def create_ssao_buffers(self, width: int, height: int) -> dict:
         """Create framebuffers and textures needed for SSAO.
 
@@ -686,6 +741,11 @@ class Renderer:
             "depth_rbo": self.rbo_depth,
         }
         
+    # -----------------------
+    # SSAO Kernel Generation
+    # -----------------------
+    # Functions to generate SSAO sample kernel.
+    # -----------------------    
         
     def create_ssao_kernel(self, kernel_size: int=64) -> list:
         """Generate a list of sample vectors for SSAO.
@@ -711,6 +771,11 @@ class Renderer:
             self.kernel.append(sample)
         return self.kernel
     
+    # -----------------------
+    # SSAO Noise Texture Generation
+    # -----------------------
+    # Functions to generate SSAO noise texture.
+    # -----------------------
     
     def generate_ssao_noise(self) -> np.ndarray:
         """Generate a small 4×4 noise texture for SSAO.
@@ -731,6 +796,11 @@ class Renderer:
                 self.noise[i, j] = self.noise[i, j] / np.linalg.norm(self.noise[i, j]) # normalize (Optional)
         return self.noise
     
+    # -----------------------  
+    # SSAO Noise Texture Creation
+    # -----------------------
+    # Functions to create SSAO noise texture.
+    # -----------------------
     
     def create_noise_texture(self, noise: np.ndarray) -> int:
         """Create an OpenGL texture from the SSAO noise data.
@@ -747,6 +817,11 @@ class Renderer:
         GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_T, GL.GL_REPEAT)
         return noise_texture
     
+    # -----------------------
+    # Frame Buffer Creation
+    # -----------------------
+    # Functions to create frame buffers for various rendering passes.
+    # -----------------------   
     
     def create_frame_buffers(self) -> None:
         """
@@ -758,6 +833,11 @@ class Renderer:
         self.depth_fbo, self.depth_texture = create_point_shadow_map(self.shadowsize)
         self.ssao_data = self.create_ssao_buffers(self.width, self.height)
         
+    # -----------------------
+    # Uniform Location Caching
+    # -----------------------
+    # Cache frequently used uniform locations for performance.
+    # -----------------------    
         
     def cache_uniform_locations(self) -> None:
         """Query and store frequently accessed uniform locations."""
@@ -796,6 +876,11 @@ class Renderer:
         self.final_reflectivity_loc = GL.glGetUniformLocation(self.final_program, "reflectivity")
         self.final_roughness_loc = GL.glGetUniformLocation(self.final_program, "roughness")
             
+    # -----------------------
+    # Shadow mapping
+    # -----------------------
+    # Functions related to shadow mapping for point lights.
+    # -----------------------        
             
     def point_light_matrices(self, light_pos=None, near_plane=None, far_plane=None) -> list:
         """
@@ -833,8 +918,14 @@ class Renderer:
 
         return matrices
 
+    # -----------------------
+    # Shadow pass
+    # -----------------------
+    # This pass renders the scene from the light's perspective to create a  
+    # depth cubemap for shadow mapping.
+    # -----------------------
         
-    def render_shadow_pass(self, scene_objects) -> None:
+    def render_shadow_pass(self, scene_objects, avatars=None) -> None:
         """
         Docstring für render_shadow_pass
         
@@ -862,6 +953,13 @@ class Renderer:
 
         GL.glUniform3fv(self.depth_light_pos_loc, 1, self.light_pos)
         GL.glUniform1f(self.depth_far_plane_loc, self.shadow_cfg.get("far_plane"))
+        
+        if avatars:
+            for avatar in avatars:
+                GL.glUniformMatrix4fv(
+                    self.depth_model_loc, 1, GL.GL_TRUE, avatar.matrix()
+                )
+                avatar.mesh.draw()
 
         for obj in scene_objects:
             GL.glUniformMatrix4fv(
@@ -871,7 +969,12 @@ class Renderer:
 
         GL.glCullFace(GL.GL_BACK)
         GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
-        
+    
+    # -----------------------
+    # Fullscreen Quad Creation
+    # -----------------------
+    # Functions to create a fullscreen quad for post-processing effects.
+    # -----------------------
         
     def create_fullscreen_quad(self):
         """
@@ -917,6 +1020,14 @@ class Renderer:
         )
 
         GL.glBindVertexArray(0)
+        
+    # -----------------------
+    # SSAO pass
+    # -----------------------
+    # This pass computes Screen Space Ambient Occlusion (SSAO) for the scene.
+    # It involves rendering the scene to a G-buffer, evaluating SSAO, and blurring
+    # the result to reduce noise.
+    # -----------------------
         
     def render_ssao_pass(self, camera, scene_objects: list[RenderObject]) -> None:
         """
@@ -1004,6 +1115,13 @@ class Renderer:
 
         GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
         
+    # -----------------------
+    # Bloom pass
+    # -----------------------
+    # This pass applies a bloom effect to bright areas of the scene.
+    # It consists of three stages: bright pass, blur, and final combination.
+    # -----------------------
+        
     def render_bloom_pass(self) -> None:
         bloom = self.bloom_cfg
         if not bloom.get("enabled", False):
@@ -1070,8 +1188,62 @@ class Renderer:
         GL.glBindVertexArray(self.quad_vao)
         GL.glDrawArrays(GL.GL_TRIANGLES, 0, 6)
         
+    # ---------------- 
+    # Render Mannequin 
+    # ----------------
+    # Here we render the player mannequin separately to avoid SSAO and shadows on it.
+    # This ensures the mannequin is always clearly visible to the player.
+    # It is drawn after the main scene rendering.
+    # ----------------
+    
+    def render_player(self, mannequin):
+        """
+        Draws the mannequin using the already-bound final shader.
+        Assumes global state is already set.
+        """
+
+        GL.glDisable(GL.GL_BLEND)
+
+        model = mannequin.matrix()
+        GL.glUniformMatrix4fv(
+            self.final_model_loc, 1, GL.GL_TRUE, model
+        )
+
+        GL.glUniform3f(
+            self.final_object_color_loc,
+            *mannequin.material.color
+        )
+
+        if mannequin.material.texture is not None:
+            GL.glActiveTexture(GL.GL_TEXTURE3)
+            GL.glBindTexture(GL.GL_TEXTURE_2D, mannequin.material.texture)
+            GL.glUniform1i(
+                GL.glGetUniformLocation(self.final_program, "u_use_texture"), 1
+            )
+        else:
+            GL.glUniform1i(
+                GL.glGetUniformLocation(self.final_program, "u_use_texture"), 0
+            )
+
+        GL.glUniform1f(
+            self.final_specular_strength_loc,
+            mannequin.material.specular_strength
+        )
+        GL.glUniform1f(
+            self.final_shininess_loc,
+            mannequin.material.shininess
+        )
+
+        mannequin.mesh.draw()    
         
-    def render_final_pass(self, player, camera, scene_objects: list[RenderObject]) -> None:
+    # -----------------------
+    # Final pass
+    # -----------------------
+    # This pass combines all previous passes and applies lighting
+    # and shading to produce the final image.
+    # -----------------------
+        
+    def render_final_pass(self, mannequin, player, camera, scene_objects: list[RenderObject]) -> None:
         """
         Final lighting pass.
 
@@ -1081,6 +1253,7 @@ class Renderer:
         - Planar reflections
         - Forward lighting
 
+        :param mannequin: the mannequin object
         :param player: the player object
         :param camera: active camera
         :param scene_objects: all visible objects
@@ -1236,3 +1409,10 @@ class Renderer:
             )
         
             obj.mesh.draw()    
+            
+        # -----------------------
+        # Draw player mannequin
+        # -----------------------
+        
+        if mannequin is not None:
+            self.render_player(mannequin)

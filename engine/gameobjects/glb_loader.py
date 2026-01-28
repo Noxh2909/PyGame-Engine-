@@ -116,6 +116,13 @@ class GLBLoader:
 
         positions = self._read_accessor(prim.attributes.POSITION)
 
+        # --- Compute mesh bounds in model space ---
+        min_bounds = positions.min(axis=0)
+        max_bounds = positions.max(axis=0)
+
+        model_height = max_bounds[1] - min_bounds[1]
+        foot_offset = -min_bounds[1]  # distance from pivot to feet
+
         normals = (
             self._read_accessor(prim.attributes.NORMAL)
             if prim.attributes.NORMAL is not None
@@ -174,4 +181,8 @@ class GLBLoader:
             "animations": animations,
             "nodes": self.gltf.nodes or [],
             "skins": self.gltf.skins or [],
+            "bounds_min": min_bounds.astype(np.float32),
+            "bounds_max": max_bounds.astype(np.float32),
+            "model_height": float(model_height),
+            "foot_offset": float(foot_offset),
         }

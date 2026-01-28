@@ -3,7 +3,6 @@ import numpy as np
 from numpy.typing import NDArray
 from gameobjects.object import GameObject
 
-
 class Mannequin(GameObject):
     """
     Animated mannequin.
@@ -17,12 +16,16 @@ class Mannequin(GameObject):
         self,
         player=None,
         body_mesh=None,
+        foot_offset: float = -1.0,
+        scale: float = 2.2,
         height: float = 0.0,
         material=None,
     ):
         self.player = player
         self.body_mesh = body_mesh
         self.body_height = height
+        self.foot_offset = foot_offset
+        self.scale_factor = scale
 
         super().__init__(
             mesh=body_mesh,
@@ -68,10 +71,10 @@ class Mannequin(GameObject):
             return np.eye(4, dtype=np.float32)
 
         pos = self.player.position.copy().astype(np.float32)
-        pos[1] += self.body_height * -1.2
+        pos[1] += self.foot_offset * self.scale_factor
 
         return (
-            self._translation(pos) @ self._yaw_rotation() @ self._scale(2.4)
+            self._translation(pos) @ self._yaw_rotation() @ self._scale(self.scale_factor)
         ).astype(np.float32)
 
     # GameObject transform interface
