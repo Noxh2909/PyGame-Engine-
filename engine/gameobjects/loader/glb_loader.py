@@ -4,8 +4,6 @@ from pygltflib import GLTF2
 import numpy as np
 import struct
 from typing import Optional
-from gameobjects.animation.animation_utils import build_local_matrix, lerp, quat_slerp
-
 
 class GLBLoader:
     def __init__(self, path: str):
@@ -66,6 +64,27 @@ class GLBLoader:
     # -------------------------------------------------
     # Animation helpers
     # -------------------------------------------------
+    def _build_local_matrix(self, translation, rotation, scale):
+        """Build a 4x4 transformation matrix from TRS components."""
+        # Create scale matrix
+        S = np.diag([scale[0], scale[1], scale[2], 1.0]).astype(np.float32)
+        
+        # Create rotation matrix from quaternion (x, y, z, w)
+        x, y, z, w = rotation
+        R = np.array([
+            [1 - 2*(y*y + z*z), 2*(x*y - w*z), 2*(x*z + w*y), 0],
+            [2*(x*y + w*z), 1 - 2*(x*x + z*z), 2*(y*z - w*x), 0],
+            [2*(x*z - w*y), 2*(y*z + w*x), 1 - 2*(x*x + y*y), 0],
+            [0, 0, 0, 1]
+        ], dtype=np.float32)
+        
+        # Create translation matrix
+        T = np.eye(4, dtype=np.float32)
+        T[:3, 3] = translation
+        
+        # Combine: T * R * S
+        return T @ R @ S
+
     def _read_animation_sampler(self, sampler):
         if sampler.input is None or sampler.output is None:
             return None, None
@@ -250,7 +269,7 @@ class GLBLoader:
                     )
 
                     if node_name == "mixamorig1:Hips":
-                        M_local = build_local_matrix(
+                        M_local = self._build_local_matrix(
                             translation=trs["translation"],
                             rotation=trs["rotation"],
                             scale=trs["scale"],
@@ -269,7 +288,7 @@ class GLBLoader:
                 # --- Build local matrices for all collected nodes ---
                 local_matrices = {}
                 for n_idx, trs in trs_per_node.items():
-                    local_matrices[n_idx] = build_local_matrix(
+                    local_matrices[n_idx] = self._build_local_matrix(
                         translation=trs["translation"],
                         rotation=trs["rotation"],
                         scale=trs["scale"],
