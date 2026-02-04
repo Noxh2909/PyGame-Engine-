@@ -2,7 +2,7 @@ from gameobjects.texture import Texture
 import os
 
 ENGINE_DIR = os.path.dirname(os.path.dirname(__file__))  # .../pygame/engine
-PROJECT_ROOT = os.path.dirname(ENGINE_DIR)               # .../pygame
+PROJECT_ROOT = os.path.dirname(ENGINE_DIR)  # .../pygame
 
 texture_dir = os.path.join(PROJECT_ROOT, "assets", "textures")
 
@@ -26,7 +26,9 @@ MATERIAL_TABLE = {
     "yasu": lambda: Material(
         texture=Texture.load_texture(os.path.join(texture_dir, "yasu.jpeg"))
     ),
-    "js": lambda: Material(texture=Texture.load_texture(os.path.join(texture_dir, "js.jpeg"))),
+    "js": lambda: Material(
+        texture=Texture.load_texture(os.path.join(texture_dir, "js.jpeg"))
+    ),
     "elian": lambda: Material(
         texture=Texture.load_texture(os.path.join(texture_dir, "elian.jpeg"))
     ),
@@ -61,6 +63,7 @@ class Material:
         self.texture_scale_value = texture_scale_value
         self.shininess = shininess
         self.specular_strength = specular_strength
+
 
 class MaterialRegistry:
     _materials: dict[str, Material] = {}

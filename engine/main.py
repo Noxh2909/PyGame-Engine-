@@ -1,8 +1,5 @@
-import os
 import pygame
 from OpenGL import GL
-
-from gameobjects.player.mannequin import Mannequin
 
 from rendering.renderer import Renderer, RenderObject
 from world import World
@@ -14,10 +11,10 @@ from gameobjects.player.camera import Camera
 from gameobjects.transform import Transform
 from gameobjects.material_lookup import Material
 from gameobjects.mesh import Mesh
-from gameobjects.loader.glb_loader import GLBLoader
+from gameobjects.loader.fbx_loader import create_mannequin_from_fbx
 from gameobjects.collider.aabb import AABBCollider
-from gameobjects.texture import Texture
 from gameobjects.object import GameObject
+from gameobjects.player.mannequin import Mannequin
 from gameobjects.vertec import plane_vertices
 
 
@@ -68,13 +65,14 @@ plane_game_object = GameObject(
     mesh=None,
     transform=Transform(position=(0.0, 0.05, 0.0)),
     material=None,
-    collider=AABBCollider(size=(1000.0, 0.1, 1000.0))
+    collider=AABBCollider(size=(1000.0, 0.1, 1000.0)),
 )
 
 physics.add_static(plane_game_object)
 
 # Create Render Plane
 plane_mesh = Mesh(plane_vertices)
+
 
 # ====================
 # Register world colliders
@@ -92,38 +90,30 @@ for obj in world.objects:
 sun = world.sun
 if sun and sun.light:
     renderer.set_light(
-        position=sun.transform.position,            
-        direction=sun.light["direction"],           
+        position=sun.transform.position,
+        direction=sun.light["direction"],
         color=sun.light["color"],
         intensity=sun.light["intensity"],
-        ambient=sun.light.get("ambient_strength")
+        ambient=sun.light.get("ambient_strength"),
     )
 
+
 # ====================
-# Load mannequin (glTF)
+# Load mannequin (FBX)
 # ====================
 
-loader = GLBLoader("assets/models/idle.glb")
-gltf = loader.load_first_mesh()
-mannequin_mesh = Mesh(gltf["vertices"], gltf["indices"])
-mannequin_material = Material(color=(1.0, 1.0, 1.0))
-
-if gltf["albedo"] is not None:
-    temp_dir = "assets/skins"
-    os.makedirs(temp_dir, exist_ok=True)
-    albedo_path = os.path.join(temp_dir, "mannequin_albedo.png")
-    gltf["albedo"].save(albedo_path)
-
-    from gameobjects.texture import Texture
-    mannequin_material.texture = Texture.load_texture(albedo_path)
+mesh, skeleton, material = create_mannequin_from_fbx("assets/models/Frank")
 
 mannequin = Mannequin(
     player=player,
-    mesh=mannequin_mesh,
-    material=mannequin_material,
-    foot_offset=gltf["foot_offset"],
-    scale=player.capsule_height,
+    mesh=mesh,
+    material=Material(color=(1.0, 1.0, 1.0)),
+    skeleton=skeleton,
+    foot_offset=0.0,
+    scale=0.018,
 )
+assert mannequin.mesh is not None, "Mannequin mesh not loaded"
+assert mannequin.skeleton is not None, "Mannequin skeleton not loaded"
 
 
 # ====================
@@ -152,10 +142,7 @@ first_person = True
 camera.third_person = False
 
 # State for object control
-control_state = {
-    'target': 'sun',
-    'm_was_pressed': False
-}
+control_state = {"target": "sun", "m_was_pressed": False}
 
 while running:
     dt = clock.tick(120) / 1000.0
@@ -196,33 +183,35 @@ while running:
 
     # Final lighting pass
     renderer.render_final_pass(mannequin, player, camera, scene_objects)
-    
+
     # Debug grid
     renderer.draw_debug_grid(camera, WIDTH / HEIGHT, size=50.0)
-    
+
     # Bloom pass
     renderer.render_bloom_pass()
-    
+
     # -------------
     # DEBUG OBJECT CONTROL
     # -------------
     keys = pygame.key.get_pressed()
-    
+
     obj_movement_speed = 0.1
 
     # Toggle control target with 'M' key (single press)
-    if keys[pygame.K_m] and not control_state['m_was_pressed']:
+    if keys[pygame.K_m] and not control_state["m_was_pressed"]:
         # Get list of controllable objects
-        controllable_objects = ['sun'] + [f'scene_{i}' for i in range(len(scene_objects) - 1)]
-        current_index = controllable_objects.index(control_state['target'])
+        controllable_objects = ["sun"] + [
+            f"scene_{i}" for i in range(len(scene_objects) - 1)
+        ]
+        current_index = controllable_objects.index(control_state["target"])
         next_index = (current_index + 1) % len(controllable_objects)
-        control_state['target'] = controllable_objects[next_index]
-        control_state['m_was_pressed'] = True
+        control_state["target"] = controllable_objects[next_index]
+        control_state["m_was_pressed"] = True
     elif not keys[pygame.K_m]:
-        control_state['m_was_pressed'] = False
-    
-    control_target = control_state['target']
-    
+        control_state["m_was_pressed"] = False
+
+    control_target = control_state["target"]
+
     # Determine which object to control
     target_transform = None
     if control_target == "mannequin":
@@ -231,10 +220,10 @@ while running:
     elif control_target == "sun" and sun is not None:
         target_transform = sun.transform
     elif control_target.startswith("scene_"):
-        scene_index = int(control_target.split('_')[1])
+        scene_index = int(control_target.split("_")[1])
         if scene_index < len(scene_objects) - 1:  # Exclude mannequin
             target_transform = scene_objects[scene_index].transform
-    
+
     # Get object position / scale (HUD-safe)
     if target_transform is not None:
         object_position = target_transform.position
@@ -242,7 +231,7 @@ while running:
     else:
         object_position = (0.0, 0.0, 0.0)
         object_scale = (0.0, 0.0, 0.0)
-    
+
     # Apply movement to target object
     if target_transform is not None:
         if keys[pygame.K_UP]:
@@ -257,11 +246,16 @@ while running:
             target_transform.position[1] += obj_movement_speed
         if keys[pygame.K_PAGEDOWN]:
             target_transform.position[1] -= obj_movement_speed
-            
+
     # Debug HUD
-    renderer.render_debug_hud(clock, player, obj=control_state, obj_pos=object_position, obj_scale=object_scale)
-    
-    
+    renderer.render_debug_hud(
+        clock,
+        player,
+        obj=control_state,
+        obj_pos=object_position,
+        obj_scale=object_scale,
+    )
+
     pygame.display.flip()
 
 pygame.quit()

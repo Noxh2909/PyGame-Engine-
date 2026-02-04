@@ -6,6 +6,7 @@ import numpy as np
 from OpenGL import GL
 import json
 import pygame
+import numpy as np
 
 from gameobjects.player.player import look_at
 from gameobjects.player.camera import Camera
@@ -859,6 +860,7 @@ class Renderer:
 
         # Final shader uniforms
         self.final_emissive_loc = GL.glGetUniformLocation(self.final_program, "u_is_emissive")
+        self.final_is_skinned_loc = GL.glGetUniformLocation(self.final_program, "u_is_skinned")
         self.final_model_loc = GL.glGetUniformLocation(self.final_program, "model")
         self.final_view_loc = GL.glGetUniformLocation(self.final_program, "view")
         self.final_proj_loc = GL.glGetUniformLocation(self.final_program, "projection")
@@ -872,9 +874,7 @@ class Renderer:
         self.final_shininess_loc = GL.glGetUniformLocation(self.final_program, "u_shininess")
         self.final_object_color_loc = GL.glGetUniformLocation(self.final_program, "objectColor")
         self.final_reflection_vp_loc = GL.glGetUniformLocation(self.final_program, "reflectionViewProj")
-        self.final_reflect_tex_loc = GL.glGetUniformLocation(self.final_program, "reflectionTex")
-        self.final_reflectivity_loc = GL.glGetUniformLocation(self.final_program, "reflectivity")
-        self.final_roughness_loc = GL.glGetUniformLocation(self.final_program, "roughness")
+        self.final_bones_loc = GL.glGetUniformLocation(self.final_program, "u_bones")
             
     # -----------------------
     # Shadow mapping
@@ -1203,10 +1203,13 @@ class Renderer:
         """
 
         GL.glDisable(GL.GL_BLEND)
+        GL.glDisable(GL.GL_CULL_FACE)
 
-        model = mannequin.matrix()
+        # Mannequin wird aktuell NICHT geskinnt
+        GL.glUniform1i(self.final_is_skinned_loc, 0)
+
         GL.glUniformMatrix4fv(
-            self.final_model_loc, 1, GL.GL_TRUE, model
+            self.final_model_loc, 1, GL.GL_TRUE, mannequin.matrix()
         )
 
         GL.glUniform3f(
@@ -1217,6 +1220,9 @@ class Renderer:
         if mannequin.material.texture is not None:
             GL.glActiveTexture(GL.GL_TEXTURE3)
             GL.glBindTexture(GL.GL_TEXTURE_2D, mannequin.material.texture)
+            GL.glUniform1i(
+                GL.glGetUniformLocation(self.final_program, "u_texture"), 3
+            )
             GL.glUniform1i(
                 GL.glGetUniformLocation(self.final_program, "u_use_texture"), 1
             )
@@ -1234,7 +1240,9 @@ class Renderer:
             mannequin.material.shininess
         )
 
-        mannequin.mesh.draw()    
+        mannequin.mesh.draw()
+
+        GL.glEnable(GL.GL_CULL_FACE)
         
     # -----------------------
     # Final pass
@@ -1252,12 +1260,8 @@ class Renderer:
         - SSAO
         - Planar reflections
         - Forward lighting
-
-        :param mannequin: the mannequin object
-        :param player: the player object
-        :param camera: active camera
-        :param scene_objects: all visible objects
         """
+
         GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self.hdr_fbo)
 
         GL.glEnable(GL.GL_DEPTH_TEST)
@@ -1266,6 +1270,7 @@ class Renderer:
         GL.glClear(int(GL.GL_COLOR_BUFFER_BIT) | int(GL.GL_DEPTH_BUFFER_BIT))
 
         GL.glUseProgram(self.final_program)
+        GL.glUniform1i(self.final_is_skinned_loc, 1)
 
         # -----------------------
         # Global uniforms
@@ -1321,8 +1326,12 @@ class Renderer:
         )
 
         # -----------------------
-        # Draw all objects
+        # Draw all static objects
         # -----------------------
+
+        # Static meshes: NO skinning
+        GL.glUniform1i(self.final_is_skinned_loc, 0)
+
         for obj in scene_objects:
             GL.glUniformMatrix4fv(
                 self.final_model_loc,
@@ -1335,84 +1344,70 @@ class Renderer:
                 self.final_object_color_loc,
                 *obj.material.color
             )
-            
-            # texture binding per object:
+
+            # texture binding per object
             if obj.material.texture is not None:
                 GL.glActiveTexture(GL.GL_TEXTURE3)
                 GL.glBindTexture(GL.GL_TEXTURE_2D, obj.material.texture)
                 GL.glUniform1i(
-                    GL.glGetUniformLocation(self.final_program, "u_texture"),
-                    3,
+                    GL.glGetUniformLocation(self.final_program, "u_texture"), 3
                 )
                 GL.glUniform1i(
-                    GL.glGetUniformLocation(self.final_program, "u_use_texture"),
-                    1,
+                    GL.glGetUniformLocation(self.final_program, "u_use_texture"), 1
                 )
             else:
                 GL.glUniform1i(
-                    GL.glGetUniformLocation(self.final_program, "u_use_texture"),
-                    0,
+                    GL.glGetUniformLocation(self.final_program, "u_use_texture"), 0
                 )
-                
-            #triplanarity is per-object
+
+            # triplanarity per object
             mode = getattr(obj.material, "texture_scale_mode", "default")
 
             if mode == "default":
                 GL.glUniform1i(
-                    GL.glGetUniformLocation(self.final_program, "u_texture_mode"),
-                    0,
+                    GL.glGetUniformLocation(self.final_program, "u_texture_mode"), 0
                 )
                 GL.glUniform1f(
-                    GL.glGetUniformLocation(self.final_program, "u_triplanar_scale"),
-                    1.0,
+                    GL.glGetUniformLocation(self.final_program, "u_triplanar_scale"), 1.0
                 )
 
             elif mode == "triplanar":
                 GL.glUniform1i(
-                    GL.glGetUniformLocation(self.final_program, "u_texture_mode"),
-                    1,
+                    GL.glGetUniformLocation(self.final_program, "u_texture_mode"), 1
                 )
                 GL.glUniform1f(
-                    GL.glGetUniformLocation(self.final_program, "u_triplanar_scale"),
-                    0.1,
+                    GL.glGetUniformLocation(self.final_program, "u_triplanar_scale"), 0.1
                 )
 
             elif mode == "manual":
                 GL.glUniform1i(
-                    GL.glGetUniformLocation(self.final_program, "u_texture_mode"),
-                    1,
+                    GL.glGetUniformLocation(self.final_program, "u_texture_mode"), 1
                 )
                 GL.glUniform1f(
                     GL.glGetUniformLocation(self.final_program, "u_triplanar_scale"),
-                    obj.material.texture_scale_value,
+                    obj.material.texture_scale_value
                 )
-             
-            # sets the specular strength per-object in other words how intense the specular highlights are, specularity means how shiny a surface is
-            specular_strength = getattr(obj.material, "specular_strength")
+
             GL.glUniform1f(
-                self.final_specular_strength_loc, 
-                specular_strength
+                self.final_specular_strength_loc,
+                obj.material.specular_strength
             )
-            
-            # sets the shininess per-object which affects the size and sharpness of the specular highlights
-            shininess = getattr(obj.material, "shininess")
             GL.glUniform1f(
                 self.final_shininess_loc,
-                shininess
+                obj.material.shininess
             )
-                            
-            # emissive is per-object
+
             emissive = getattr(obj.material, "is_emissive", False)
             GL.glUniform1i(
                 self.final_emissive_loc,
                 1 if emissive else 0
             )
-        
-            obj.mesh.draw()    
-            
+
+            obj.mesh.draw()
+
         # -----------------------
         # Draw player mannequin
         # -----------------------
-        
+
         if mannequin is not None:
             self.render_player(mannequin)
