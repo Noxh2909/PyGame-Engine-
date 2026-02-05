@@ -1376,16 +1376,8 @@ class Renderer:
                     GL.glGetUniformLocation(self.final_program, "u_texture_mode"), 1
                 )
                 GL.glUniform1f(
-                    GL.glGetUniformLocation(self.final_program, "u_triplanar_scale"), 0.1
-                )
-
-            elif mode == "manual":
-                GL.glUniform1i(
-                    GL.glGetUniformLocation(self.final_program, "u_texture_mode"), 1
-                )
-                GL.glUniform1f(
-                    GL.glGetUniformLocation(self.final_program, "u_triplanar_scale"),
-                    obj.material.texture_scale_value
+                    GL.glGetUniformLocation(self.final_program, "u_triplanar_scale"), 
+                    getattr(obj.material, "texture_scale_value")
                 )
 
             GL.glUniform1f(
